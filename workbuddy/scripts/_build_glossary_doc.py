@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """生成面向小白的 Word 文档：技术词典 + 待确认决策清单"""
 import os
+from datetime import date
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -85,7 +86,7 @@ def make_table(headers, rows, widths=None):
 # =====================================================================
 add_title('蚊媒识别平台 · 技术小白词典 & 待确认决策清单')
 add_para('（给非技术背景的项目方 / 疾控同事查阅用）', bold=True, size=11)
-add_para('生成日期：2026-07-08', size=9)
+add_para('生成日期：' + date.today().isoformat(), size=9)
 add_para('对应文档：PRD《无人机 + YOLOv13n 屋顶蚊媒孳生容器识别平台 — 简化版 MVP》', size=9)
 doc.add_paragraph('—' * 30)
 
@@ -250,6 +251,6 @@ add_para('本词典由产品战略团队 AI 协作生成，供非技术背景的
          size=9, color=RGBColor(0x80, 0x80, 0x80))
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   '蚊媒识别平台_技术小白词典与待确认清单.docx')
+                   '蚊媒识别平台_技术小白词典与待确认清单_' + date.today().isoformat() + '.docx')
 doc.save(out)
 print('SAVED:', out)
