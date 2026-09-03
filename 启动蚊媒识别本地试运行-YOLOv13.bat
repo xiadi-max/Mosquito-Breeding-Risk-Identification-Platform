@@ -6,7 +6,7 @@ title MosquitoMapper Local Trial
 set "BACKEND_ROOT=%~dp0backend"
 set "START_SCRIPT=%BACKEND_ROOT%\scripts\start_m6.ps1"
 set "CONDA_ACTIVATE=D:\Anaconda3\Scripts\activate.bat"
-set "PYTHON_EXE=D:\Anaconda3\envs\mosquito311\python.exe"
+set "PYTHON_EXE=D:\Anaconda3\envs\mosquito311-yolov13\python.exe"
 set "YOLO_CONFIG_DIR=%BACKEND_ROOT%\runtime\yolo_config"
 set "READY_URL=http://127.0.0.1:8000/api/v1/health/ready"
 set "PAGE_URL=http://127.0.0.1:8000/"
@@ -34,16 +34,16 @@ if not exist "%CONDA_ACTIVATE%" (
 )
 
 if not exist "%PYTHON_EXE%" (
-    echo [ERROR] mosquito311 Python not found: %PYTHON_EXE%
+    echo [ERROR] mosquito311-yolov13 Python not found: %PYTHON_EXE%
     goto :failed
 )
 
 if not exist "%YOLO_CONFIG_DIR%" mkdir "%YOLO_CONFIG_DIR%" >nul 2>nul
 
-echo [1/3] Activating mosquito311...
-call "%CONDA_ACTIVATE%" mosquito311
+echo [1/3] Activating mosquito311-yolov13...
+call "%CONDA_ACTIVATE%" mosquito311-yolov13
 if errorlevel 1 (
-    echo [ERROR] Failed to activate mosquito311.
+    echo [ERROR] Failed to activate mosquito311-yolov13.
     goto :failed
 )
 

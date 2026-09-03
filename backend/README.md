@@ -77,7 +77,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\scripts\worker.ps1'
 powershell -NoProfile -ExecutionPolicy Bypass -File '.\scripts\start_yolov13.ps1'
 ```
 
-创建并安装 `mosquito-yolo11` 环境后，可以使用：
+创建并安装 `mosquito311-yolov11` 环境后，可以使用：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File '.\scripts\start_yolo11.ps1'
@@ -87,7 +87,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File '.\scripts\start_yolo11.ps1'
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File '.\scripts\start_yolo11.ps1' `
-  -PythonPath 'D:\Anaconda3\envs\mosquito-yolo11\python.exe'
+  -PythonPath 'D:\Anaconda3\envs\mosquito311-yolov11\python.exe'
 ```
 
 配置由启动进程载入，不会覆盖现有 `.env`。不要让两个版本共用 SQLite 数据库或 Artifact 目录，否则两个 Worker 可能竞争同一作业队列。

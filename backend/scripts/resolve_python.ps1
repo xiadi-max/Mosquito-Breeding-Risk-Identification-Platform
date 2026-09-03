@@ -14,7 +14,7 @@ else {
 }
 
 if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
-    throw 'Python was not found. Run conda activate mosquito311 or pass -PythonPath.'
+    throw 'Python was not found. Activate mosquito311-yolov13 or mosquito311-yolov11, or pass -PythonPath.'
 }
 
 $Candidate

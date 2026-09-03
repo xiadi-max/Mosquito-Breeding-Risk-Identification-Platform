@@ -1,5 +1,5 @@
 param(
-    [string]$PythonPath = 'D:\Anaconda3\envs\mosquito-yolo11\python.exe'
+    [string]$PythonPath = 'D:\Anaconda3\envs\mosquito311-yolov11\python.exe'
 )
 
 $ErrorActionPreference = 'Stop'

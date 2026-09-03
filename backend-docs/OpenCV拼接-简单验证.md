@@ -5,7 +5,7 @@
 打开 Anaconda Prompt：
 
 ```bat
-conda activate mosquito311
+conda activate mosquito311-yolov13
 cd /d E:\vibecoding\蚊媒识别\codex-v2\v2.2\backend
 python -m pip install -e ".[dev]"
 ```
