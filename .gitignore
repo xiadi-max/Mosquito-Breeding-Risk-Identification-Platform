@@ -1,0 +1,29 @@
+# Local settings and secrets
+.env
+.env.*
+!.env.example
+
+# Dependency and runtime artifacts
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.pytest-tmp/
+runtime/
+tmp/
+output/
+
+# Generated data and model files
+backend/data/*
+!backend/data/.gitkeep
+backend/models/*
+!backend/models/.gitkeep
+backend/logs/
+backend/backups/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.pt
+*.onnx
+*.engine
