@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MosquitoMapper · PC 端作品集展示</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%23071318'/%3E%3Cpath d='M7 9h18v12H7zM12 25h8M16 21v4' stroke='%2379ecd6' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3C/svg%3E">
+<style>
+:root{--ink:#071318;--green:#168f7b;--mint:#79ead6;--paper:#effcf8;--muted:#5b706f;--line:rgba(7,19,24,.16)}
+*{box-sizing:border-box}html{background:var(--paper)}body{margin:0;min-height:100vh;overflow-x:hidden;color:var(--ink);font-family:Inter,"Segoe UI","Microsoft YaHei",sans-serif;background:radial-gradient(circle at 10% 8%,rgba(121,234,214,.44),transparent 28%),radial-gradient(circle at 88% 76%,rgba(84,168,255,.17),transparent 30%),#effcf8}
+.poster{min-height:100vh;padding:34px clamp(26px,4vw,72px) 30px;position:relative;isolation:isolate}.poster:before{content:"";position:absolute;inset:0;z-index:-1;opacity:.32;background-image:linear-gradient(rgba(7,19,24,.052) 1px,transparent 1px),linear-gradient(90deg,rgba(7,19,24,.052) 1px,transparent 1px);background-size:44px 44px;mask-image:linear-gradient(to bottom,#000,transparent 94%)}
+.top{display:flex;align-items:flex-start;justify-content:space-between;gap:30px;margin-bottom:26px}.kicker{display:flex;align-items:center;gap:11px;font:700 11px/1 ui-monospace,SFMono-Regular,monospace;letter-spacing:.16em;text-transform:uppercase}.kicker:before{content:"";width:34px;height:2px;background:var(--ink)}h1{font-size:clamp(38px,4.2vw,68px);line-height:.98;letter-spacing:-.062em;margin:13px 0 0}h1 em{font-style:normal;color:var(--green)}.intro{max-width:620px;margin:14px 0 0;font-size:14px;line-height:1.75;color:var(--muted)}
+.controls{display:flex;gap:7px;padding:5px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.7);backdrop-filter:blur(18px)}.controls button{border:0;border-radius:999px;padding:10px 15px;background:transparent;color:var(--muted);font-size:12px;font-weight:700;cursor:pointer}.controls button.active{background:var(--ink);color:white}
+.showcase{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px;align-items:start}.side{display:contents}.case{min-width:0}.browser{position:relative;overflow:hidden;border:1px solid rgba(7,19,24,.24);border-radius:18px;background:#071019;box-shadow:0 28px 70px rgba(7,35,35,.18),0 5px 16px rgba(7,19,24,.12);aspect-ratio:16/10}.browser:before{content:"";display:block;height:34px;background:linear-gradient(180deg,#18302f,#102322);border-bottom:1px solid rgba(255,255,255,.08)}.browser:after{content:"";position:absolute;left:15px;top:13px;width:8px;height:8px;border-radius:50%;background:#ff766f;box-shadow:15px 0 #ffd05d,30px 0 #5ee6a0}.browser-main,.browser-small{aspect-ratio:16/10}.screen{position:absolute;left:0;right:0;top:34px;bottom:0;overflow:hidden}.screen iframe{position:absolute;left:0;top:0;width:1440px;height:900px;border:0;background:#071019;transform-origin:0 0;pointer-events:none}
+.label{display:flex;align-items:flex-start;gap:11px;margin-top:11px}.no{flex:0 0 auto;border:1px solid var(--line);border-radius:99px;padding:4px 7px;font:700 10px ui-monospace,monospace}.label strong{display:block;font-size:13px}.label span{display:block;color:var(--muted);font-size:11px;line-height:1.5;margin-top:2px}
+.detail .showcase{display:grid;grid-template-columns:1fr;max-width:1280px;margin:0 auto}.detail .case:not(.selected){display:none}.detail .case.selected{display:block}.detail .side{display:contents}.detail .browser{border-radius:24px}.detail .label{margin-top:14px;padding:14px 18px;border:1px solid var(--line);border-radius:16px;background:rgba(255,255,255,.6)}.detail .label strong{font-size:17px}.detail .label span{font-size:13px}
+.footer{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:24px;padding-top:16px;border-top:1px solid var(--line);font:700 10px ui-monospace,monospace;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)}.brand{color:var(--ink);font-size:13px}.brand b{color:var(--green)}
+@media(max-width:980px){.top{flex-direction:column}.controls{align-self:flex-end}.showcase{grid-template-columns:1fr}.side{display:contents}.browser-small{aspect-ratio:16/10}}
+@media(max-width:640px){.poster{padding:24px 14px}.side{grid-template-columns:1fr}.controls{align-self:flex-start;flex-wrap:wrap}.footer{align-items:flex-start;flex-direction:column}}
+@media print{.controls{display:none}.browser{box-shadow:none}.poster{padding:28px 42px}}
+</style>
+</head>
+<body>
+<main class="poster" id="poster">
+  <header class="top">
+    <div><div class="kicker">Desktop system preview · 2026</div><h1>从区域影像，到<em>风险决策</em></h1><p class="intro">面向疾控与巡查人员的 PC 端蚊媒智能识别工作台。用一套连续流程承载影像管理、空间标注、模型识别、风险分析与处置建议。</p></div>
+    <nav class="controls" aria-label="展示方式"><button class="active" data-mode="overview">三屏总览</button><button data-mode="detail">单屏特写</button><button id="nextScreen">切换画面</button></nav>
+  </header>
+  <section class="showcase" aria-label="PC 端核心界面">
+    <article class="case selected" data-title="风险分析"><div class="browser browser-main"><div class="screen"><iframe title="风险分析" src="index.html?showcase=1&step=6"></iframe></div></div><div class="label"><span class="no">01</span><div><strong>风险分析总览</strong><span>把检测结果还原到完整区域，在同一视野内完成热力判断与风险分级。</span></div></div></article>
+    <div class="side">
+      <article class="case" data-title="任务工作台"><div class="browser browser-small"><div class="screen"><iframe title="任务工作台" src="index.html?showcase=1&step=0"></iframe></div></div><div class="label"><span class="no">02</span><div><strong>任务工作台</strong><span>集中管理区域、批次与处理状态。</span></div></div></article>
+      <article class="case" data-title="AI 决策"><div class="browser browser-small"><div class="screen"><iframe title="AI 决策" src="index.html?showcase=1&step=7"></iframe></div></div><div class="label"><span class="no">03</span><div><strong>AI 处置决策</strong><span>将风险证据转化为可执行的现场优先级。</span></div></div></article>
+    </div>
+  </section>
+  <footer class="footer"><span class="brand">MOSQUITO<b>MAPPER</b></span><span>Urban health · intelligent inspection</span><span>Desktop portfolio / 01—03</span></footer>
+</main>
+<script>
+const poster=document.getElementById('poster'),cases=[...document.querySelectorAll('.case')],modeButtons=[...document.querySelectorAll('[data-mode]')];let current=0;
+function sizeFrames(){document.querySelectorAll('.browser').forEach(browser=>{const screen=browser.querySelector('.screen'),frame=screen.querySelector('iframe'),width=browser.clientWidth;browser.style.height=`${34+width*900/1440}px`;frame.style.transform=`scale(${width/1440})`})}function select(index){current=(index+cases.length)%cases.length;cases.forEach((item,i)=>item.classList.toggle('selected',i===current))}
+modeButtons.forEach(button=>button.addEventListener('click',()=>{poster.classList.toggle('detail',button.dataset.mode==='detail');modeButtons.forEach(item=>item.classList.toggle('active',item===button));requestAnimationFrame(sizeFrames)}));document.getElementById('nextScreen').addEventListener('click',()=>{if(!poster.classList.contains('detail'))modeButtons[1].click();select(current+1);requestAnimationFrame(sizeFrames)});addEventListener('resize',sizeFrames);addEventListener('load',()=>{sizeFrames();setTimeout(sizeFrames,300)});sizeFrames();
+</script>
+</body>
+</html>

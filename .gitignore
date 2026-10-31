@@ -27,3 +27,7 @@ backend/backups/
 *.pt
 *.onnx
 *.engine
+
+# Local AI credentials
+backend/config/ai.local.env
+backend/config/webodm.local.env

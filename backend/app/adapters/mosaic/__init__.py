@@ -7,6 +7,9 @@ from app.core.config import Settings
 
 
 def create_mosaic_engine(provider: str, settings: Settings) -> MosaicEngine:
+    if provider == "imported":
+        from app.adapters.mosaic.imported import ImportedMosaicEngine
+        return ImportedMosaicEngine()
     if provider == "fake":
         return FakeMosaicEngine()
     if provider == "opencv":

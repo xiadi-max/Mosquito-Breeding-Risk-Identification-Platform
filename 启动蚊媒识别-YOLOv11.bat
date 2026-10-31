@@ -5,8 +5,8 @@ title MosquitoMapper YOLO11 Local Trial
 
 set "BACKEND_ROOT=%~dp0backend"
 set "START_SCRIPT=%BACKEND_ROOT%\scripts\start_yolo11.ps1"
-set "CONDA_ACTIVATE=D:\Anaconda3\Scripts\activate.bat"
-set "PYTHON_EXE=D:\Anaconda3\envs\mosquito311-yolov11\python.exe"
+set "CONDA_ACTIVATE=D:\Anaconda\Scripts\activate.bat"
+set "PYTHON_EXE=D:\Anaconda\envs\mosquito311-yolov11\python.exe"
 set "YOLO_CONFIG_DIR=%BACKEND_ROOT%\runtime\yolo11_config"
 set "READY_URL=http://127.0.0.1:8011/api/v1/health/ready"
 set "PAGE_URL=http://127.0.0.1:8011/"

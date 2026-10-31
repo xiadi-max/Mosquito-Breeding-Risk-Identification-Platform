@@ -5,6 +5,65 @@ const qsa = selector => [...document.querySelectorAll(selector)];
 const text = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value; };
 const escapeText = value => String(value ?? '');
 
+export function resumeStep(task) {
+  const stages = {task_created:1, image_ingest:2, mosaic:3, roi:4, grid:5, inference:6, risk:7, completed:7};
+  if (task?.current_stage === 'image_ingest' && task.image_count < 2) return 1;
+  if (task?.current_stage === 'inference' && task.blocked_by?.code === 'PENDING_REVIEWS') return 5;
+  return stages[task?.current_stage] || 1;
+}
+
+export async function applyPendingReviews(api, taskId, action, onProgress = () => {}) {
+  if (!['accept', 'reject'].includes(action)) throw new Error('无效的复核操作');
+  const pending = [];
+  let cursor = null, runId;
+  do {
+    const page = await api.get(`/tasks/${taskId}/reviews?status=pending&limit=100${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+    if (runId !== undefined && page.run_id !== runId) throw new Error('推理批次已变化，请刷新后重试');
+    runId = page.run_id;
+    pending.push(...page.items.filter(item => item.effective_state === 'pending'));
+    cursor = page.next_cursor;
+  } while (cursor);
+  let completed = 0;
+  for (const item of pending) {
+    try {
+      await api.patch(`/tasks/${taskId}/reviews/${item.id}`, {action, expected_version:item.version});
+    } catch (error) {
+      error.message = `已处理 ${completed}/${pending.length} 项；${error.message}`;
+      throw error;
+    }
+    completed++;
+    onProgress(completed, pending.length);
+  }
+  return completed;
+}
+
+export async function loadAcceptedDetections(api, taskId, runId) {
+  const items = [];
+  let cursor = null;
+  do {
+    const page = await api.get(`/tasks/${taskId}/detections?status=accepted&limit=100&run_id=${encodeURIComponent(runId)}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`);
+    if (page.run_id !== runId || page.run_status !== 'current') throw new Error('检测批次已变化，请刷新结果后重试');
+    items.push(...page.items.filter(item => item.effective_state === 'accepted'));
+    cursor = page.next_cursor;
+  } while (cursor);
+  return items;
+}
+
+export function detectionOverlayData(items, width, height) {
+  if (!(width > 0 && height > 0)) return [];
+  const colors = ['#00cde5','#ffb020','#a878ff','#3bea8d','#ff607e','#588bff'];
+  return items.filter(item => item.effective_state === 'accepted').flatMap(item => {
+    const box = item.mosaic_box;
+    if (!box || ![box.x1,box.y1,box.x2,box.y2].every(Number.isFinite)) return [];
+    const x1=Math.max(0,Math.min(width,box.x1)),y1=Math.max(0,Math.min(height,box.y1));
+    const x2=Math.max(0,Math.min(width,box.x2)),y2=Math.max(0,Math.min(height,box.y2));
+    if (x2<=x1 || y2<=y1) return [];
+    const name=item.category.name;
+    const hash=[...name].reduce((value,char)=>(value*31+char.charCodeAt(0))>>>0,0);
+    return [{id:item.id,x:x1/width*900,y:y1/height*570,width:(x2-x1)/width*900,height:(y2-y1)/height*570,color:colors[hash%colors.length],label:`${name} ${item.confidence.toFixed(2)}`}];
+  });
+}
+
 export async function startApiIntegration({initialDashboard, toast, goStep}) {
   const config = window.APP_CONFIG;
   const api = createApiClient(config.api.baseUrl);
@@ -13,6 +72,7 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     taskId: initialDashboard.meta?.current_task_id || initialDashboard.tasks?.[0]?.uuid || null,
     task: null, images: [], mosaic: null, roi: null, gridPreview: null, gridPlan: null,
     detections: null, risk: null, decision: null, system: null, mosaicObjectUrl: null,
+    resultView: 'heat', heatVisible: true, contoursVisible: true, boxRequest: 0, selectedDetectionId: null,
     mosaicArtifactId: null,
     modelInputSize: initialDashboard.model?.activeVersion?.inputSize || config.grid?.modelPixelSize || 640,
   };
@@ -166,7 +226,21 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     qs('#riskBasisExplanation')?.remove();
   }
 
+  function renderTaskSummary() {
+    const task = (state.dashboard.tasks || []).find(item => item.uuid === state.taskId);
+    const label = task ? `${task.name} · ${task.id.slice(-4)}` : '尚未创建或选择任务';
+    const progress = Math.max(0, Math.min(100, Number(task?.progress) || 0));
+    text('currentTaskName', task ? label : '未选择任务');
+    text('homeCurrentTask', label);
+    text('homeTaskProgress', task ? `${task.status || '待开始'} · ${progress}%` : '待开始 · 0%');
+    text('railPercent', `${progress}%`);
+    if (qs('#railBar')) qs('#railBar').style.width = `${progress}%`;
+    qsa('button').filter(button => button.textContent.includes('继续当前任务')).forEach(button => { button.disabled = !task; });
+  }
+
   function resetApiBusinessPanels() {
+    state.boxRequest++;qs('#detectionBoxLayer')?.replaceChildren();state.selectedDetectionId=null;qs('#detectionDetailList')?.replaceChildren();
+    renderTaskSummary();
     renderPipelineIdle();
     const reviews = qs('#reviewList'); if (reviews) { reviews.replaceChildren(); appendEmpty(reviews, '尚无真实推理候选'); }
     text('reviewCount', '0'); text('reviewSourceNote', '等待真实推理结果；候选图块将从本任务的拼接影像中生成。');
@@ -179,11 +253,13 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
   function renderDecisionMode() {
     const provider = state.system?.providers?.decision?.name || state.dashboard.meta?.capabilities?.decision || 'rules';
     const rules = provider === 'rules';
-    text('decisionProviderBadge', rules ? 'RULES · REAL DATA' : `AI · ${provider.toUpperCase()}`);
+    const service=state.system?.providers?.decision;
+    const label=service?.display_name||'AI';
+    text('decisionProviderBadge', rules ? 'RULES · REAL DATA' : `${label} · ${service?.model||'API'}`);
     text('decisionModeCopy', rules
       ? '当前使用离线规则引擎，建议只引用本任务的真实重点检查区域、类别和人工补充信息，不会伪装成大模型输出。'
-      : '已配置 AI Provider；建议将基于本任务的真实风险结果与人工补充信息生成。');
-    const button = qs('#generateAi'); if (button && !state.decision) button.textContent = rules ? '✦ 生成规则处置建议' : '✦ 生成 AI 处置建议';
+      : '点击生成时会向 AI 服务商发送本任务检测统计、聚集分析和现场补充文字，不发送原始图片。');
+    const button = qs('#generateAi'); if (button) button.textContent = `✦ ${state.decision?'重新生成':'生成'}${rules?'规则处置建议':label+' 处置建议'}`;
   }
 
   function renderRuntimeStatus() {
@@ -254,7 +330,14 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     ]);
     if (calls[0].status === 'fulfilled') state.task = calls[0].value;
     if (calls[1].status === 'fulfilled') { state.images = calls[1].value.items; renderImages(calls[1].value); }
-    if (calls[2].status === 'fulfilled') { state.roi = calls[2].value; renderRoiSummary(state.roi); }
+    if (calls[2].status === 'fulfilled') {
+      state.roi = calls[2].value;
+      const width = state.roi.source?.width || 900, height = state.roi.source?.height || 545;
+      window.setEditorRois?.(state.roi.items.map(roi => ({
+        id:roi.code, visible:roi.visible, points:roi.polygon.map(([x,y]) => [x/width*900,y/height*545]),
+      })));
+      renderRoiSummary(state.roi);
+    }
     if (calls[3].status === 'fulfilled') state.gridPlan = calls[3].value;
     if (calls[4].status === 'fulfilled') { state.detections = calls[4].value; renderReviews(calls[4].value); renderInferenceSummary(calls[4].value); }
     if (calls[5].status === 'fulfilled' && calls[5].value.run_id) state.risk = calls[5].value;
@@ -285,6 +368,7 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     if (!files.length) return;
     const supported = files.filter(file => /\.(jpe?g|png)$/i.test(file.name));
     const skipped = files.length - supported.length;
+    if (qs('#uploadMode')?.value === 'imported' && supported.length !== 1) throw new Error('请选择 1 张已拼接好的完整区域图像');
     if (!supported.length) throw new Error('请选择 JPG、JPEG 或 PNG 影像');
     const form = new FormData(); supported.slice(0, 50).forEach(file => form.append('files', file, file.name));
     await run(qs('#chooseFiles'), '正在上传…', async () => {
@@ -327,7 +411,10 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     text('captureSpan', summary.capture_span_seconds == null ? '--' : `${Math.round(summary.capture_span_seconds/60)} min`);
     text('mosaicSourceCount', items.length);
     text('uploadStatus', items.length >= 2 ? `${items.length} 张影像已由服务端校验` : (items.length ? '已校验 1 张；至少还需 1 张才能拼接' : '等待导入影像'));
-    qs('#toStitch').disabled = items.length < 2;
+    const imported = qs('#uploadMode')?.value === 'imported';
+    qs('#toStitch').textContent = imported ? '使用已拼接图像，进入检测范围 →' : '进入拼接预处理 →';
+    qs('#toStitch').disabled = imported ? items.length !== 1 : items.length < 2;
+    if (imported) text('uploadStatus', items.length === 1 ? '已校验 1 张已拼接图像，可直接进入检测范围' : (items.length ? '此模式需要一张完整区域图，请移除多余影像或新建任务' : '请上传 1 张已拼接图像'));
     qs('#startStitch').disabled = items.length < 2;
   }
 
@@ -416,15 +503,68 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     if (!localRois.length) throw new Error('至少需要一个检测范围');
     const current=await api.get(`/tasks/${taskId}/rois`), sourceId=state.mosaic?.mosaic_artifact_id||current.source?.artifact_id;
     if (!sourceId) throw new Error('请先完成拼接');
-    state.roi=await api.put(`/tasks/${taskId}/rois`,{expected_version:current.version,source_artifact_id:sourceId,coordinate_space:'mosaic_pixel',items:localRois.map((roi,index)=>({code:roi.id||`ROI-${index+1}`,visible:roi.visible!==false,polygon:roi.points.map(svgToNative)}))});renderRoiSummary(state.roi);
+    state.roi=await api.put(`/tasks/${taskId}/rois`,{expected_version:current.version,source_artifact_id:sourceId,coordinate_space:'mosaic_pixel',items:localRois.map((roi,index)=>({code:roi.id||`ROI-${index+1}`,visible:roi.visible!==false,polygon:roi.points.map(svgToNative)}))});state.gridPreview=null;renderRoiSummary(state.roi);
     toast('检测范围已保存到服务端'); return state.roi;
   }
 
+  function renderGridBase() {
+    const svg = qs('#gridSvg'), layer = qs('#gridLayer');
+    const source = state.roi?.source;
+    const width = source?.width || state.mosaic?.width || 900;
+    const height = source?.height || state.mosaic?.height || 520;
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.querySelectorAll(':scope > rect, :scope > polygon').forEach(node => { node.style.display = 'none'; });
+    let image = qs('#gridMosaicPreview');
+    if (!image) {
+      image = document.createElementNS('http://www.w3.org/2000/svg', 'image');
+      image.id = 'gridMosaicPreview';
+      svg.insertBefore(image, layer);
+    }
+    image.setAttribute('width', width); image.setAttribute('height', height);
+    image.setAttribute('preserveAspectRatio', 'none');
+    const artifactId = source?.artifact_id || knownMosaicArtifactId();
+    if (artifactId) { setSvgImageHref(image, artifactUrl(artifactId)); image.style.display = ''; }
+    else { clearSvgImageHref(image); image.style.display = 'none'; }
+    const clip = qs('#roiClip'); clip.replaceChildren();
+    let outlines = qs('#gridRoiOutlines');
+    if (!outlines) {
+      outlines = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      outlines.id = 'gridRoiOutlines'; svg.appendChild(outlines);
+    }
+    outlines.replaceChildren();
+    for (const roi of state.roi?.items || []) {
+      if (roi.visible === false) continue;
+      const polygon = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      polygon.setAttribute('points', roi.polygon.map(point => point.join(',')).join(' '));
+      clip.appendChild(polygon);
+      const outline = polygon.cloneNode();
+      outline.setAttribute('fill', 'rgba(91,224,204,.045)');
+      outline.setAttribute('stroke', '#5be0cc'); outline.setAttribute('stroke-width', '2');
+      outline.setAttribute('vector-effect', 'non-scaling-stroke');
+      outlines.appendChild(outline);
+    }
+  }
   function renderGridPreview(preview) {
-    state.gridPreview=preview; const width=state.roi?.source?.width||900,height=state.roi?.source?.height||520,layer=qs('#gridLayer'); layer.replaceChildren();
-    for (const tile of preview.tiles) { const [x1,y1,x2,y2]=tile.source_box,r=document.createElementNS('http://www.w3.org/2000/svg','rect'); r.setAttribute('x',x1/width*900);r.setAttribute('y',y1/height*520);r.setAttribute('width',(x2-x1)/width*900);r.setAttribute('height',(y2-y1)/height*520);r.setAttribute('class','grid-cell');layer.appendChild(r); }
+    state.gridPreview = preview;
+    renderGridBase();
+    const layer = qs('#gridLayer'); layer.replaceChildren();
+    for (const tile of preview.tiles) {
+      const [x1,y1,x2,y2] = tile.source_box;
+      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      for (const [key, value] of Object.entries({x:x1,y:y1,width:x2-x1,height:y2-y1})) rect.setAttribute(key, value);
+      rect.setAttribute('class', 'grid-cell');
+      rect.setAttribute('vector-effect', 'non-scaling-stroke'); layer.appendChild(rect);
+    }
     text('gridCount',preview.count);text('validGrid',preview.count);text('padGrid',preview.padded_count);text('gridSize',`${(preview.estimated_bytes/1048576).toFixed(1)} MB`);text('stepPx',`${preview.step_px} px`);
   }
+  window.renderApiGrid = () => {
+    renderGridBase();
+    qs('#gridLayer').replaceChildren();
+    state.gridPreview = null;
+    for (const id of ['gridCount','validGrid','padGrid','gridSize']) text(id, '--');
+    if (state.roi?.items?.length) previewGrid().catch(notifyError);
+  };
   async function previewGrid() {
     if (!state.taskId) return; if (!state.roi) { try { await saveRois(); } catch { return; } }
     const preview=await api.post(`/tasks/${state.taskId}/grid-plans/preview`,{roi_version:state.roi.version,tile_size:640,overlap:+qs('#overlapRange').value/100,edge_strategy:'pad',min_roi_intersection:.1});renderGridPreview(preview);
@@ -433,6 +573,44 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     await run(qs('[data-stage="4"] .stage-actions .primary'),'正在生成网格…',async()=>{if(!state.gridPreview)await previewGrid();const payload={roi_version:state.gridPreview.roi_version,tile_size:640,overlap:state.gridPreview.overlap,edge_strategy:'pad',min_roi_intersection:.1,fingerprint:state.gridPreview.fingerprint};const resource=await api.put(`/tasks/${requireTask()}/grid-plan`,payload,{'Idempotency-Key':idempotency('grid')});await waitForJob(api,resource);state.gridPlan=await api.get(`/tasks/${state.taskId}/grid-plan`);goStep(5);toast('网格已生成，可以开始推理')});
   }
 
+  let reviewBusy = false;
+  function setReviewControls() {
+    const count = state.detections?.stats?.pending || 0;
+    for (const id of ['reviewAcceptAll', 'reviewRejectAll']) {
+      const button = qs(`#${id}`); if (button) button.disabled = reviewBusy || !count;
+    }
+    qsa('#reviewList button').forEach(button => { button.disabled = reviewBusy; });
+    if (reviewBusy) {
+      qs('#toResults').disabled = true;
+      qs('#runModel').disabled = true;
+    } else qs('#runModel').disabled = false;
+  }
+  async function reviewAll(action) {
+    if (reviewBusy) return;
+    const taskId = requireTask(), label = action === 'accept' ? '保留' : '排除';
+    reviewBusy = true; setReviewControls();
+    text('reviewBatchStatus', `正在${label}待复核候选…`);
+    try {
+      const count = await applyPendingReviews(api, taskId, action, (done, total) => {
+        if (state.taskId === taskId) { state.risk = null; state.decision = null; }
+        text('reviewBatchStatus', `正在${label}：${done}/${total}`);
+      });
+      text('reviewBatchStatus', `已${label} ${count} 项`);
+      toast(`已批量${label} ${count} 个待复核候选`);
+    } catch (error) {
+      text('reviewBatchStatus', '批量处理已停止，已提交的复核会保留');
+      notifyError(error);
+    } finally {
+      try {
+        if (state.taskId === taskId) {
+          state.detections = await api.get(`/tasks/${taskId}/detections`);
+          renderReviews(state.detections); renderInferenceSummary(state.detections);
+        }
+      } catch (error) { notifyError(error); }
+      reviewBusy = false; setReviewControls();
+      if (state.taskId === taskId && state.detections) renderReviews(state.detections);
+    }
+  }
   function renderReviews(data) {
     const list=qs('#reviewList'); list.replaceChildren();
     const pending=data.items.filter(item=>item.effective_state==='pending');
@@ -453,8 +631,9 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     text('reviewSourceNote',data.run_id
       ? `候选图块来自当前真实推理批次 ${data.run_id.slice(0,8)}；已接受 ${data.stats.accepted}，已排除 ${data.stats.rejected}。`
       : '等待真实推理结果；候选图块将从本任务的拼接影像中生成。');
+    setReviewControls();
     const resultButton=qs('#toResults');
-    if(resultButton){resultButton.disabled=!data.run_id||pendingCount>0;resultButton.textContent=pendingCount?`请先复核 ${pendingCount} 项`:(state.risk?.run_id?'查看真实结果热力图 →':'计算真实风险结果 →')}
+    if(resultButton){resultButton.disabled=reviewBusy||!data.run_id||pendingCount>0;resultButton.textContent=pendingCount?`请先复核 ${pendingCount} 项`:(state.risk?.run_id?'查看真实结果热力图 →':'计算真实风险结果 →')}
   }
   function renderInferenceSummary(data){
     if(data?.run_id){
@@ -486,21 +665,33 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     steps.forEach((step,index)=>{step.className=`pipe-step${index<active?' done':index===active?' active':''}`;step.querySelector('.pipe-state').textContent=index<active?'完成':index===active?(job.status==='failed'?'失败':`${job.progress}%`):'等待'});
   }
   async function review(item,button,action){
-    await run(button,'提交中…',async()=>{
-      await api.patch(`/tasks/${requireTask()}/reviews/${item.id}`,{action,expected_version:item.version});
-      state.detections=await api.get(`/tasks/${requireTask()}/detections`);renderReviews(state.detections);renderInferenceSummary(state.detections);
-      toast(action==='accept'?'候选已保留并计入真实结果':'候选已排除')
-    });
+    if (reviewBusy) return;
+    reviewBusy = true; setReviewControls();
+    try {
+      await run(button,'提交中…',async()=>{
+        await api.patch(`/tasks/${requireTask()}/reviews/${item.id}`,{action,expected_version:item.version});
+        state.risk = null; state.decision = null;
+        state.detections=await api.get(`/tasks/${requireTask()}/detections`);renderReviews(state.detections);renderInferenceSummary(state.detections);
+        toast(action==='accept'?'候选已保留并计入真实结果':'候选已排除')
+      });
+    } finally {
+      reviewBusy = false; setReviewControls();
+      if (state.detections) renderReviews(state.detections);
+    }
   }
 
   let riskRefreshRunning=false,riskRefreshQueued=false,riskRefreshTimer=null;
   function readRiskThresholds(){
-    const high=qs('#highRange'),medium=qs('#medRange');let hi=+high.value,med=+medium.value;
-    if(med>=hi){med=Math.max(+medium.min,hi-5);medium.value=med}
+    const high=qs('#highRange'),medium=qs('#medRange');
+    high.setCustomValidity(''); medium.setCustomValidity('');
+    if (!high.reportValidity() || !medium.reportValidity()) return null;
+    const hi=Number(high.value),med=Number(medium.value);
+    if(med>=hi){medium.setCustomValidity('中聚集起始必须小于高聚集起始');medium.reportValidity();return null}
     text('highVal',hi);text('medVal',med);return{high:hi,medium:med}
   }
   async function calculateRisk({button=qs('#toResults'),navigate=true}={}){
     const thresholds=readRiskThresholds();
+    if (!thresholds) return;
     await run(button,'正在重算风险…',async()=>{
       const detections=await api.get(`/tasks/${requireTask()}/detections`);
       if(!detections.run_id)throw new Error('请先完成真实模型推理');
@@ -518,6 +709,120 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     try{await calculateRisk({button:qs('#riskRecalculate'),navigate:false})}catch(_){/* run() already reports the API problem */}
     finally{riskRefreshRunning=false;if(riskRefreshQueued){riskRefreshQueued=false;await refreshRiskFromThresholds()}}
   }
+  function ensureDetectionDetails() {
+    let panel=qs('#detectionDetails');
+    if(panel)return panel;
+    panel=document.createElement('aside');panel.id='detectionDetails';panel.className='detection-details';
+    panel.setAttribute('aria-label','检测目标信息');
+    const heading=document.createElement('div');heading.className='detection-details-heading';
+    const title=document.createElement('strong');title.textContent='检测目标';
+    const count=document.createElement('span');count.id='detectionDetailCount';count.className='quiet';heading.append(title,count);
+    const note=document.createElement('p');note.className='footnote';note.textContent='点击目标可高亮左侧对应检测框';
+    const list=document.createElement('div');list.id='detectionDetailList';
+    panel.append(heading,note,list);qs('[data-stage="6"] .heat-layout').appendChild(panel);
+    return panel;
+  }
+  function selectDetection(id, fromMap=false) {
+    state.selectedDetectionId=id;
+    for(const group of qsa('#detectionBoxLayer>g'))group.classList.toggle('selected',group.dataset.detectionId===id);
+    for(const card of qsa('#detectionDetailList .detection-detail-card')) {
+      const selected=card.dataset.detectionId===id;
+      card.classList.toggle('selected',selected);card.setAttribute('aria-pressed',String(selected));
+      if(selected&&fromMap)card.scrollIntoView({block:'nearest',behavior:'smooth'});
+    }
+  }
+  function renderDetectionDetails(items,boxes) {
+    ensureDetectionDetails();
+    const list=qs('#detectionDetailList');list.replaceChildren();text('detectionDetailCount',`${items.length} 个保留目标`);
+    const colors=new Map(boxes.map(box=>[box.id,box.color]));
+    for(const item of items) {
+      const card=document.createElement('button');card.type='button';card.className='detection-detail-card';card.dataset.detectionId=item.id;
+      card.onclick=()=>selectDetection(item.id);card.setAttribute('aria-pressed','false');
+      if(item.crop_artifact_id){const image=document.createElement('img');image.src=artifactUrl(item.crop_artifact_id);image.alt=`${item.code} 目标局部图`;image.loading='lazy';card.appendChild(image)}
+      const info=document.createElement('div');info.className='detection-detail-info';
+      const name=document.createElement('strong');name.textContent=`${item.code} · ${displayCategory(item.category.name)}`;name.style.color=colors.get(item.id)||'var(--mint)';
+      const meta=document.createElement('div');meta.className='detection-detail-meta';meta.textContent=`置信度 ${item.confidence.toFixed(2)} · 来源网格 ${item.source_grid}`;
+      const coords=document.createElement('div');coords.className='detection-detail-meta';
+      const box=item.mosaic_box;coords.textContent=`拼接图坐标 (${Math.round(box.x1)}, ${Math.round(box.y1)}) – (${Math.round(box.x2)}, ${Math.round(box.y2)}) px`;
+      info.append(name,meta,coords);card.appendChild(info);list.appendChild(card);
+    }
+    if(!items.length)appendEmpty(list,'当前没有保留目标');
+    selectDetection(state.selectedDetectionId);
+  }
+  function applyResultView() {
+    const boxes = state.resultView === 'boxes';
+    qs('[data-stage="6"] .heat-layout')?.classList.toggle('detection-view', boxes);
+    const explanation=qs('#hotspotMapHelp');if(explanation)explanation.style.display=boxes?'none':'';
+    for (const id of ['heatLayer','contourLayer','densityPreviewImage','riskSyncStatus','riskRecalculate']) {
+      const node=qs(`#${id}`); if(!node) continue;
+      const isHeat=id==='heatLayer'||id==='densityPreviewImage';
+      const hidden=boxes||(isHeat&&!state.heatVisible)||(id==='contourLayer'&&!state.contoursVisible)||(id==='densityPreviewImage'&&!node.getAttribute('href'));
+      node.classList.remove('hidden');
+      node.style.display=hidden?'none':'';
+    }
+    const legend=qs('[data-stage="6"] .legend');if(legend)legend.style.display=boxes||!state.heatVisible?'none':'';
+    qs('#detectionBoxLayer')?.style.setProperty('display',boxes?'':'none');
+    for (const button of qsa('[data-result-view]')) {
+      const active=button.dataset.resultView===state.resultView;
+      button.classList.toggle('primary',active);button.setAttribute('aria-pressed',String(active));
+    }
+    for (const button of qsa('[data-stage="6"] .toolbar button[onclick*="toggleLayer"]')) {
+      button.style.display=boxes?'none':'';
+      const active=button.getAttribute('onclick').includes("'heat'")?state.heatVisible:state.contoursVisible;
+      button.setAttribute('aria-pressed',String(active));
+      button.classList.toggle('primary',active);
+    }
+    const copy=qs('[data-stage="6"]>.card .toolbar .toolbar-copy');
+    if(copy)copy.textContent=boxes?'完整拼接图 · 保留目标 · 类别与置信度':'实景拼接底图 · 相对聚集颜色 · 重点检查区域边界';
+    qs('#detectionViewStatus')?.style.setProperty('display',boxes?'':'none');
+  }
+  async function renderDetectionBoxes() {
+    const request=++state.boxRequest,taskId=state.taskId;
+    const svg=qs('.heatmap svg');
+    let layer=qs('#detectionBoxLayer');
+    if(!layer){layer=document.createElementNS('http://www.w3.org/2000/svg','g');layer.id='detectionBoxLayer';svg.appendChild(layer)}
+    layer.replaceChildren();
+    ensureDetectionDetails();text('detectionDetailCount','加载中…');qs('#detectionDetailList').replaceChildren();
+    text('detectionViewStatus','正在加载检测框…');
+    if(!taskId){text('detectionViewStatus','请先选择任务');text('detectionDetailCount','0 个目标');appendEmpty(qs('#detectionDetailList'),'请先选择任务');return}
+    try {
+      const current=await api.get(`/tasks/${taskId}/detections?limit=1`);
+      if(!current.run_id) {text('detectionViewStatus','尚未生成检测结果');text('detectionDetailCount','0 个目标');appendEmpty(qs('#detectionDetailList'),'尚未生成检测结果');return}
+      const items=await loadAcceptedDetections(api,taskId,current.run_id);
+      if(request!==state.boxRequest||taskId!==state.taskId)return;
+      const width=state.roi?.source?.width||state.mosaic?.width;
+      const height=state.roi?.source?.height||state.mosaic?.height;
+      if(!width||!height)throw new Error('拼接图尺寸尚未加载，请稍后重试');
+      const boxes=detectionOverlayData(items,width,height);
+      const byId=new Map(items.map(item=>[item.id,item]));
+      for(const box of boxes) {
+        const group=document.createElementNS('http://www.w3.org/2000/svg','g');
+        group.dataset.detectionId=box.id;
+        group.onclick=event=>{event.stopPropagation();selectDetection(box.id,true)};
+        const rect=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        for(const [key,value] of Object.entries({x:box.x,y:box.y,width:box.width,height:box.height,fill:'none',stroke:box.color,'stroke-width':2,'vector-effect':'non-scaling-stroke'}))rect.setAttribute(key,value);
+        const title=document.createElementNS('http://www.w3.org/2000/svg','title');title.textContent=`${byId.get(box.id).code} · ${box.label}`;
+        const labelWidth=Math.min(900,box.label.length*6.5+8),labelX=Math.min(box.x,900-labelWidth),labelY=box.y>=16?box.y-16:Math.min(554,box.y+box.height);
+        const background=document.createElementNS('http://www.w3.org/2000/svg','rect');
+        for(const [key,value] of Object.entries({x:labelX,y:labelY,width:labelWidth,height:16,fill:box.color}))background.setAttribute(key,value);
+        const label=document.createElementNS('http://www.w3.org/2000/svg','text');
+        for(const [key,value] of Object.entries({x:labelX+4,y:labelY+12,fill:'#061219','font-size':11,'font-family':'monospace','font-weight':700}))label.setAttribute(key,value);
+        label.textContent=box.label;group.append(title,rect,background,label);layer.appendChild(group);
+      }
+      renderDetectionDetails(items,boxes);
+      text('detectionViewStatus',items.length?`保留目标 ${items.length} 个 · 类别 / 置信度`:'当前没有保留目标');
+    } catch(error) {
+      if(request!==state.boxRequest||taskId!==state.taskId)return;
+      text('detectionDetailCount','加载失败');appendEmpty(qs('#detectionDetailList'),'检测信息加载失败，请再次点击检测框图重试');
+      text('detectionViewStatus','检测框加载失败，请再次点击检测框图重试');notifyError(error);
+    }
+    applyResultView();
+  }
+  window.toggleApiLayer = which => {
+    if(which==='heat')state.heatVisible=!state.heatVisible;
+    else state.contoursVisible=!state.contoursVisible;
+    applyResultView();
+  };
   function installRiskAndDecisionControls(){
     const toolbar=qs('[data-stage="6"]>.card .toolbar'),copy=toolbar?.querySelector('.toolbar-copy');
     const baseStatus=toolbar?.querySelector('.status-line span');
@@ -528,6 +833,16 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     const layerButtons=toolbar?[...toolbar.querySelectorAll('.btn.small')]:[];
     const boundaryButton=layerButtons.find(button=>button.textContent.includes('热点边界'));if(boundaryButton)boundaryButton.textContent='区域边界';
     if(copy)copy.textContent='实景拼接底图 · 相对聚集颜色 · 重点检查区域边界';
+    if(toolbar&&!qs('#detectionViewButton')) {
+      for(const [view,label] of [['heat','热力图'],['boxes','检测框图']]) {
+        const button=document.createElement('button');button.type='button';button.className='btn small';button.dataset.resultView=view;button.textContent=label;
+        if(view==='boxes')button.id='detectionViewButton';
+        button.onclick=()=>{state.resultView=view;applyResultView();if(view==='boxes')void renderDetectionBoxes()};
+        toolbar.insertBefore(button,copy);
+      }
+      const status=document.createElement('span');status.id='detectionViewStatus';status.className='quiet';status.setAttribute('role','status');toolbar.insertBefore(status,copy);
+    }
+
     const legend=qs('[data-stage="6"] .legend');
     const legendTitle=legend?.querySelector('b');if(legendTitle)legendTitle.textContent='目标聚集指数（本任务相对值）';
     const legendScale=legend?[...legend.querySelectorAll('.legend-scale span')]:[];
@@ -545,9 +860,11 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
       heatLayout.insertAdjacentElement('afterend',help);
     }
     const high=qs('#highRange'),medium=qs('#medRange');
-    const changed=()=>{const values=readRiskThresholds();text('riskSyncStatus',`聚集指数分界 ${values.medium} / ${values.high} 待重算`)};
+    const changed=()=>{clearTimeout(riskRefreshTimer);high.setCustomValidity('');medium.setCustomValidity('');text('riskSyncStatus','分界值已修改，按回车或离开输入框后重算')};
     const committed=()=>{clearTimeout(riskRefreshTimer);riskRefreshTimer=setTimeout(()=>refreshRiskFromThresholds(),250)};
     high.oninput=changed;medium.oninput=changed;high.onchange=committed;medium.onchange=committed;
+    for (const input of [high,medium]) input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();committed()}};
+    applyResultView();
     const generate=qs('#generateAi'),context=qs('#contextInput');
     if(generate&&context){generate.style.marginTop='12px';context.parentElement.insertBefore(generate,context)}
   }
@@ -610,9 +927,11 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     }
     if(!risk.hotspots.length){const note=document.createElement('div');note.className='footnote';note.style.gridColumn='1/-1';note.textContent=summary.reason==='NO_ACCEPTED_DETECTIONS'?'本次没有人工复核保留的目标，未形成重点检查区域':'当前阈值下未形成重点检查区域';side.appendChild(note)}
     qsa('[data-stage="6"] .grid-3 .btn').forEach(button=>{button.disabled=!risk.run_id});
+    setReviewControls();
     const resultButton=qs('#toResults');if(resultButton){resultButton.disabled=false;resultButton.textContent='查看真实结果热力图 →'}
     const decisionButton=qs('#generateAi');if(decisionButton)decisionButton.disabled=!risk.run_id;
     text('riskSyncStatus',`已应用聚集指数分界 ${risk.thresholds.medium} / ${risk.thresholds.high}`);renderDecisionEvidence();renderDecisionMode();
+    applyResultView();if(state.resultView==='boxes')void renderDetectionBoxes();
   }
 
   async function generateDecision(){
@@ -631,8 +950,8 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     const title=document.createElement('h3');title.textContent=decision.title;article.appendChild(title);
     for(const priority of decision.priorities){const block=document.createElement('div');block.className=`priority${priority.level==='P1'?'':' med'}`;const heading=document.createElement('h4');heading.textContent=`优先级 ${priority.level}：${priority.heading}`;block.appendChild(heading);for(const paragraph of priority.body.split(/\n\s*\n/).filter(Boolean)){const body=document.createElement('p');body.textContent=paragraph;block.appendChild(body)}article.appendChild(block)}
     const evidence=document.createElement('div');evidence.className='evidence';
-    const provider=decision.provider?.name||decision.source;for(const value of [`版本 ${decision.version}`,new Date(decision.created_at).toLocaleString(),`来源 ${provider}`,decision.disclaimer]){const span=document.createElement('span');span.textContent=value;evidence.appendChild(span)}article.appendChild(evidence);
-    text('decisionDisclaimer',decision.disclaimer);qs('#generateAi').textContent=provider==='rules'?'✦ 重新生成规则建议':'✦ 重新生成 AI 建议';renderDecisionEvidence();
+    const provider=decision.provider?.name||decision.source;const sourceLabel=provider==='rules'?'本地规则':`${decision.provider?.model?.startsWith('deepseek')?'DeepSeek':'AI'} · ${decision.provider?.model||provider}`;for(const value of [`版本 ${decision.version}`,new Date(decision.created_at).toLocaleString(),`来源 ${sourceLabel}`,decision.disclaimer]){const span=document.createElement('span');span.textContent=value;evidence.appendChild(span)}article.appendChild(evidence);
+    text('decisionDisclaimer',decision.disclaimer);renderDecisionMode();renderDecisionEvidence();
   }
   async function saveDecision(){if(!state.decision)throw new Error('请先生成处置建议');const blocks=qsa('#suggestion .priority'),priorities=blocks.map((block,index)=>({level:state.decision.priorities[index]?.level||'P2',hotspot_code:state.decision.priorities[index]?.hotspot_code||null,heading:block.querySelector('h4')?.textContent.replace(/^优先级 P\d：/,'')||'处置建议',body:[...block.querySelectorAll('p')].map(node=>node.textContent).join('\n\n'),evidence_refs:state.decision.priorities[index]?.evidence_refs||[]}));state.decision=await api.patch(`/tasks/${requireTask()}/decisions/${state.decision.id}`,{title:qs('#suggestion h3')?.textContent||state.decision.title,priorities,disclaimer:state.decision.disclaimer,expected_current_version:state.decision.version});renderDecision(state.decision);toast(`建议草稿已保存为版本 ${state.decision.version}`);}
   async function exportReport(format,button){await run(button,`正在生成 ${format.toUpperCase()}…`,async()=>{if(!state.risk?.run_id)state.risk=await api.get(`/tasks/${requireTask()}/results`);if(!state.risk?.run_id)throw new Error('请先完成真实风险分析');const resource=await api.post(`/tasks/${state.taskId}/exports`,{format,risk_run_id:state.risk.run_id,decision_version_id:state.decision?.id||null,include_detection_details:true},{'Idempotency-Key':idempotency(`export-${format}`)});const job=await waitForJob(api,resource);const url=job.result.download_url;const anchor=document.createElement('a');anchor.href=url;anchor.download='';document.body.appendChild(anchor);anchor.click();anchor.remove();toast(`${format.toUpperCase()} 已根据当前真实结果生成并开始下载`)});}
@@ -641,8 +960,36 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
   // error in an old/completed task must not leave the legacy demo handlers in
   // control of task creation or image upload.
   installModeBadge(); installRiskAndDecisionControls(); resetApiBusinessPanels(); wireTaskCards();
+  qs('#reviewAcceptAll').onclick = () => reviewAll('accept');
+  qs('#reviewRejectAll').onclick = () => reviewAll('reject');
+  qsa('button').filter(button => button.textContent.includes('继续当前任务')).forEach(button => {
+    button.onclick = () => run(button, '正在恢复任务…', async () => {
+      requireTask();
+      await hydrateTask();
+      if (!state.task) throw new Error('任务读取失败，请稍后重试');
+      goStep(resumeStep(state.task));
+    }).catch(() => {});
+  });
   window.createTask=createTask; window.resetUpload=()=>resetUpload().catch(notifyError); window.resolveReview=()=>toast('请使用当前复核项按钮');
   qs('#taskModal .modal-actions .primary').onclick=event=>{event.preventDefault();createTask().catch(()=>{})};
+  const mode = qs('#uploadMode');
+  mode.onchange = () => {
+    text('uploadHint', mode.value === 'imported' ? 'JPG / JPEG / PNG · 1 张完整区域图 · 单张不超过 50 MB · 跳过拼接' : 'JPG / JPEG / PNG · 至少 2 张 · 最多 50 张 · 单张不超过 50 MB');
+    qs('#fileInput').multiple = mode.value !== 'imported';
+    renderImages({items: state.images});
+  };
+  qs('#toStitch').onclick = () => {
+    if (mode.value !== 'imported') { goStep(2); return; }
+    run(qs('#toStitch'), '正在导入已拼接图像…', async () => {
+      const resource = await api.post(`/tasks/${requireTask()}/mosaic-jobs`, {provider:'imported'}, {'Idempotency-Key':idempotency('imported')});
+      const job = await waitForJob(api, resource, () => {});
+      state.mosaic = job.result;
+      await renderMosaicArtifact(job.result);
+      qs('#toAnnot').disabled = false;
+      goStep(3);
+      toast('已拼接图像已导入，请设置检测范围');
+    }).catch(() => {});
+  };
   const fileInput=qs('#fileInput');
   qs('#chooseFiles').onclick=event=>{event.preventDefault();event.stopPropagation();fileInput.value='';fileInput.click()};
   fileInput.onchange=()=>{const files=[...fileInput.files];fileInput.value='';uploadFiles(files).catch(()=>{})};

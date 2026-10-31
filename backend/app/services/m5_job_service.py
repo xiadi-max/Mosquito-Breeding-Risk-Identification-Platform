@@ -34,8 +34,13 @@ class M5JobService:
     def create_decision(self, task_id, data: DecisionCreate, key):
         self._running(task_id); risk=self.repo.risk(task_id,data.risk_run_id)
         if risk is None or risk.status!="current": self._state("只能基于当前风险结果生成建议。")
-        if data.provider!="rules": raise AppError(status_code=503,code="DECISION_PROVIDER_NOT_CONFIGURED",title="建议 Provider 未配置",detail="M5 默认仅启用离线 rules Provider。")
+        if data.provider == "openai_compatible":
+            from app.adapters.decision.openai_compatible import configured
+            if self.settings.decision_provider != "openai_compatible" or not configured(self.settings):
+                raise AppError(status_code=503,code="DECISION_PROVIDER_NOT_CONFIGURED",title="AI 服务未配置",detail="请在本地 AI 配置中填写服务地址、模型和 API Key，并重启程序。")
         snapshot={"operation":"decision_generate","risk_run_id":risk.id,"risk_fingerprint":risk.input_fingerprint,"context":data.context,"provider":data.provider}
+        if data.provider == "openai_compatible":
+            snapshot.update({"model":self.settings.openai_model,"base_url":self.settings.openai_base_url})
         return self._queue(task_id,JobType.DECISION_GENERATE.value,snapshot,key,"建议生成作业已进入队列")
 
     def create_export(self, task_id, data: ExportCreate, key):

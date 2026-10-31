@@ -14,16 +14,22 @@ if (-not (Test-Path -LiteralPath $ProfilePath -PathType Leaf)) {
     throw "Runtime profile was not found: $ProfilePath"
 }
 
-foreach ($RawLine in Get-Content -LiteralPath $ProfilePath -Encoding utf8) {
+$EnvironmentPaths = @($ProfilePath)
+$AiConfigPath = Join-Path $BackendRoot 'config\ai.local.env'
+if (Test-Path -LiteralPath $AiConfigPath -PathType Leaf) { $EnvironmentPaths += $AiConfigPath }
+foreach ($EnvironmentPath in $EnvironmentPaths) {
+foreach ($RawLine in Get-Content -LiteralPath $EnvironmentPath -Encoding utf8) {
     $Line = $RawLine.Trim()
     if (-not $Line -or $Line.StartsWith('#')) { continue }
     $Separator = $Line.IndexOf('=')
     if ($Separator -le 0) {
-        throw "Invalid profile entry in ${ProfilePath}: $RawLine"
+        throw "Invalid environment entry in ${EnvironmentPath}"
     }
     $Name = $Line.Substring(0, $Separator).Trim()
     $Value = $Line.Substring($Separator + 1).Trim()
     [Environment]::SetEnvironmentVariable($Name, $Value, 'Process')
+}
+
 }
 
 $ProfileDataRoot = Join-Path $BackendRoot "data\$Profile"

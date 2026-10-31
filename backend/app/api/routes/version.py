@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Request
 
+from urllib.parse import urlsplit
+from app.adapters.decision.openai_compatible import configured as decision_configured
 from app import __version__
 from app.core.config import Settings
 from app.core.db import get_schema_revision
@@ -51,12 +53,9 @@ def version(request: Request) -> VersionResponse:
             ),
             "decision": ProviderSummary(
                 name=settings.decision_provider,
-                configured=settings.decision_provider == "rules"
-                or bool(
-                    settings.openai_base_url
-                    and settings.openai_api_key
-                    and settings.openai_model
-                ),
+                configured=settings.decision_provider == "rules" or decision_configured(settings),
+                model=settings.openai_model if settings.decision_provider == "openai_compatible" else None,
+                display_name=("DeepSeek" if urlsplit(settings.openai_base_url or "").hostname == "api.deepseek.com" else "AI") if settings.decision_provider == "openai_compatible" else "本地规则",
             ),
         },
         limits={

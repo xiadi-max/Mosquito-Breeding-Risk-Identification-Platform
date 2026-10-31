@@ -18,7 +18,7 @@ class MosaicOptions(StrictSchema):
 class MosaicJobCreate(StrictSchema):
     model_config = ConfigDict(extra="forbid")
 
-    provider: Literal["auto", "fake", "opencv"] = "auto"
+    provider: Literal["auto", "fake", "opencv", "imported"] = "auto"
     options: MosaicOptions = Field(default_factory=MosaicOptions)
 
 

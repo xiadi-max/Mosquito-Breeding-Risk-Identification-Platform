@@ -22,6 +22,8 @@ class ReadyResponse(StrictSchema):
 class ProviderSummary(StrictSchema):
     name: str
     configured: bool
+    model: str | None = None
+    display_name: str | None = None
 
 
 class VersionResponse(StrictSchema):

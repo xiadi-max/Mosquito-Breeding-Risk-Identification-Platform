@@ -58,8 +58,9 @@ class Settings(BaseSettings):
     nms_iou: float = Field(default=0.45, gt=0, le=1)
     decision_provider: Literal["rules", "openai_compatible"] = "rules"
     openai_base_url: str | None = None
-    openai_api_key: str | None = None
+    openai_api_key: str | None = Field(default=None, repr=False)
     openai_model: str | None = None
+    decision_api_timeout_seconds: int = Field(default=120, ge=10, le=300)
     risk_medium_threshold: int = Field(default=40, ge=0, le=99)
     risk_high_threshold: int = Field(default=75, ge=1, le=100)
     backup_root: Path = Path("./backups")

@@ -88,22 +88,83 @@ class DecisionService:
 
 
 class DecisionJobExecutor:
-    def __init__(self,factory:sessionmaker[Session],settings:Settings):self.f=factory;self.settings=settings
-    def execute(self,job_id,worker_id):
-        with self.f() as s:
-            job=s.get(Job,job_id);snap=json.loads(job.input_json) if job else {}
-            if job is None or job.worker_id!=worker_id or job.status!=JobStatus.RUNNING.value:raise JobExecutionError("JOB_OWNERSHIP_LOST","Worker 已失去建议作业租约。")
-            risk=M5Repository(s).risk(job.task_id,snap["risk_run_id"])
-            if risk is None or risk.status!="current" or risk.input_fingerprint!=snap["risk_fingerprint"]:raise JobExecutionError("DECISION_INPUT_STALE","风险结果已变化。")
-            hotspots=list(risk.hotspots);task=s.get(Task,job.task_id);stats=json.loads(risk.stats_json)
-            priorities=_rule_priorities(risk,snap.get("context"))
-        content=DecisionContent(title=f"{task.name} · 风险处置建议",priorities=priorities,disclaimer=DISCLAIMER)
-        evidence={"risk_run_id":risk.id,"metric":"relative_kde_clustering_index","summary":stats["summary"],"hotspots":[{"code":h.code,"clustering_index":h.clustering_index,"clustering_level":h.clustering_level,"location":h.name} for h in hotspots]}
-        with self.f() as s:
-            job=s.get(Job,job_id);risk=M5Repository(s).risk(job.task_id,snap["risk_run_id"])
-            if risk is None or risk.status!="current":raise JobExecutionError("DECISION_INPUT_STALE","风险结果已变化。")
-            old=M5Repository(s).current_decision(job.task_id)
-            if old:old.status="stale"
-            WorkflowService(s).invalidate_from_decision(job.task_id)
-            version=(s.query(func.max(DecisionVersion.version)).filter(DecisionVersion.task_id==job.task_id).scalar() or 0)+1
-            decision=DecisionVersion(id=str(uuid4()),task_id=job.task_id,risk_run_id=risk.id,version=version,source="generated",provider="rules",model=None,context_text=snap.get("context"),content_json=canonical_json(content.model_dump()),evidence_snapshot_json=canonical_json(evidence),prompt_template_version="rules-v4",status="current",created_at=utc_now());s.add(decision);s.execute(update(Task).where(Task.id==job.task_id).values(version=Task.version+1,updated_at=utc_now()));s.flush();result={"decision_version_id":decision.id,"version":version};JobService(s,self.settings).succeed(job_id,worker_id,result);return result
+    def __init__(self, factory: sessionmaker[Session], settings: Settings):
+        self.f = factory
+        self.settings = settings
+
+    def execute(self, job_id, worker_id):
+        from app.adapters.decision.openai_compatible import DecisionProviderError, generate
+        from app.services.mosaic_service import JobCanceled
+
+        with self.f() as session:
+            job = session.get(Job, job_id)
+            if job is None or job.worker_id != worker_id or job.status != JobStatus.RUNNING.value:
+                raise JobExecutionError("JOB_OWNERSHIP_LOST", "Worker 已失去建议作业租约。")
+            if job.cancel_requested_at:
+                raise JobCanceled
+            snapshot = json.loads(job.input_json)
+            risk = M5Repository(session).risk(job.task_id, snapshot["risk_run_id"])
+            if risk is None or risk.status != "current" or risk.input_fingerprint != snapshot["risk_fingerprint"]:
+                raise JobExecutionError("DECISION_INPUT_STALE", "风险结果已变化。")
+            task_id = job.task_id
+            task = session.get(Task, task_id)
+            title = f"{task.name} · 风险处置建议"
+            stats = json.loads(risk.stats_json)
+            evidence = {
+                "risk_run_id": risk.id,
+                "metric": "relative_kde_clustering_index",
+                "metric_note": "本任务内KDE相对聚集指数，不是疾病概率，不可跨任务比较。",
+                "summary": stats["summary"],
+                "categories": stats.get("categories", []),
+                "thresholds": {"medium": risk.medium_threshold, "high": risk.high_threshold},
+                "hotspots": [{"code":h.code,"clustering_index":h.clustering_index,
+                    "clustering_level":h.clustering_level,"location":h.name,
+                    "target_count":h.target_count,"dominant_category":h.dominant_category}
+                    for h in risk.hotspots],
+            }
+            priorities = _rule_priorities(risk, snapshot.get("context"))
+
+        provider = snapshot.get("provider", "rules")
+        model = None
+        template = "rules-v4"
+        if provider == "openai_compatible":
+            if (self.settings.decision_provider != provider
+                or snapshot.get("model") != self.settings.openai_model
+                or snapshot.get("base_url") != self.settings.openai_base_url):
+                raise JobExecutionError("DECISION_CONFIG_CHANGED", "AI 配置已变化，请重新生成建议。")
+            try:
+                content = generate(self.settings, evidence, snapshot.get("context"), title, DISCLAIMER)
+            except DecisionProviderError as exc:
+                raise JobExecutionError(exc.code, exc.detail, retryable=False) from None
+            model = self.settings.openai_model
+            template = "ai-grounded-v1"
+        elif provider == "rules":
+            content = DecisionContent(title=title, priorities=priorities, disclaimer=DISCLAIMER)
+        else:
+            raise JobExecutionError("DECISION_PROVIDER_NOT_CONFIGURED", "未知的建议服务。")
+
+        with self.f() as session:
+            job = session.get(Job, job_id)
+            if job is None or job.worker_id != worker_id or job.status != JobStatus.RUNNING.value:
+                raise JobExecutionError("JOB_OWNERSHIP_LOST", "Worker 已失去建议作业租约。")
+            if job.cancel_requested_at:
+                raise JobCanceled
+            risk = M5Repository(session).risk(task_id, snapshot["risk_run_id"])
+            if risk is None or risk.status != "current" or risk.input_fingerprint != snapshot["risk_fingerprint"]:
+                raise JobExecutionError("DECISION_INPUT_STALE", "风险结果已变化。")
+            old = M5Repository(session).current_decision(task_id)
+            if old:
+                old.status = "stale"
+            WorkflowService(session).invalidate_from_decision(task_id)
+            version = (session.query(func.max(DecisionVersion.version)).filter(DecisionVersion.task_id == task_id).scalar() or 0) + 1
+            decision = DecisionVersion(id=str(uuid4()),task_id=task_id,risk_run_id=risk.id,
+                version=version,source="generated",provider=provider,model=model,
+                context_text=snapshot.get("context"),content_json=canonical_json(content.model_dump()),
+                evidence_snapshot_json=canonical_json(evidence),prompt_template_version=template,
+                status="current",created_at=utc_now())
+            session.add(decision)
+            session.execute(update(Task).where(Task.id == task_id).values(version=Task.version+1,updated_at=utc_now()))
+            session.flush()
+            result = {"decision_version_id":decision.id,"version":version}
+            JobService(session,self.settings).succeed(job_id,worker_id,result)
+            return result

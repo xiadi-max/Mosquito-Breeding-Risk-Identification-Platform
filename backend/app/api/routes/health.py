@@ -53,11 +53,8 @@ def _provider_checks(settings: Settings) -> tuple[dict[str, object], bool]:
 
     decision_configured = True
     if settings.decision_provider == "openai_compatible":
-        decision_configured = bool(
-            settings.openai_base_url
-            and settings.openai_api_key
-            and settings.openai_model
-        )
+        from app.adapters.decision.openai_compatible import configured
+        decision_configured = configured(settings)
 
     checks: dict[str, object] = {
         "mosaic_provider": {

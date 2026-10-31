@@ -116,6 +116,12 @@ class JobService:
             )
 
         provider = self._resolve_mosaic_provider(data.provider)
+        if provider == "imported" and len(images) != 1:
+            raise AppError(
+                status_code=400, code="MOSAIC_IMPORT_REQUIRES_ONE_IMAGE",
+                title="请选择一张已拼接图像",
+                detail="已拼接图像模式每个任务使用一张完整区域图；请移除其他影像或新建任务。",
+            )
         if provider == "opencv" and len(images) < 2:
             raise AppError(
                 status_code=400,
@@ -497,7 +503,7 @@ class JobService:
             configured = not self.settings.production_mode
         elif provider == "opencv":
             configured = opencv_runtime_available()
-        if self.settings.production_mode and provider != self.settings.mosaic_provider:
+        if self.settings.production_mode and provider not in {self.settings.mosaic_provider, "imported"}:
             configured = False
         if not configured:
             raise AppError(
