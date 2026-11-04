@@ -107,6 +107,8 @@ def build_grid(
         for x in range(start_x, stop_x + 1, step):
             nominal = box(x, y, x + tile_size, y + tile_size)
             intersection_area = roi_geometry.intersection(nominal).area
+            if intersection_area <= 0:
+                continue
             ratio = intersection_area / float(tile_size * tile_size)
             if ratio + 1e-12 < min_roi_intersection:
                 continue

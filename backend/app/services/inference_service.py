@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from PIL import Image
+from shapely.ops import unary_union
 from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload, sessionmaker
@@ -23,6 +24,9 @@ from app.domain.models import Artifact, Detection, GridPlan, GridTile, Inference
 from app.repositories.grid_repository import GridRepository
 from app.repositories.inference_repository import InferenceRepository
 from app.repositories.job_repository import JobRepository
+from app.repositories.roi_repository import ROIRepository
+from app.services.geometry_service import validate_polygon
+from app.services.roi_inference import box_within_roi, mask_tile_to_roi
 from app.services.detection_geometry import MappedPrediction, class_aware_nms, tile_box_to_mosaic
 from app.services.job_service import JobService, job_resource
 from app.services.mosaic_service import JobCanceled, JobExecutionError, _file_metadata
@@ -75,6 +79,7 @@ class InferenceService:
             "provider": provider,
             "thresholds": thresholds,
             "nms_iou": data.nms_iou,
+            "roi_policy": "masked_full_box_v1",
         }
         input_hash = fingerprint(input_snapshot)
         request_hash = fingerprint({"task_id": task_id, **data.model_dump(mode="json")})
@@ -155,6 +160,16 @@ class InferenceJobExecutor:
             if model is None or not model.active:
                 raise JobExecutionError("MODEL_NOT_CONFIGURED", "推理模型版本已失效。")
             task_id, mosaic_width, mosaic_height = job.task_id, grid.mosaic_artifact.width, grid.mosaic_artifact.height
+            roi_version = ROIRepository(session).by_version(job.task_id, grid.roi_version.version)
+            if roi_version is None or not roi_version.is_current:
+                raise JobExecutionError("INFERENCE_INPUT_STALE", "检测范围已失效，请重新生成网格。")
+            polygons = [
+                validate_polygon(json.loads(item.polygon_json), roi_version.source_width, roi_version.source_height).geometry
+                for item in roi_version.rois if item.visible
+            ]
+            if not polygons:
+                raise JobExecutionError("INFERENCE_INPUT_STALE", "缺少有效检测范围，请重新保存 ROI。")
+            roi_geometry = unary_union(polygons)
             tiles = list(sorted(grid.tiles, key=lambda item: item.code))
         if not mosaic_path.is_file() or mosaic_width is None or mosaic_height is None:
             raise JobExecutionError("ARTIFACT_NOT_FOUND", "当前拼接图文件不存在。")
@@ -173,6 +188,9 @@ class InferenceJobExecutor:
                 crop = mosaic.crop((tile.source_x1, tile.source_y1, tile.source_x2, tile.source_y2))
                 canvas = Image.new("RGB", (grid.tile_size, grid.tile_size), (0, 0, 0))
                 canvas.paste(crop, (tile.pad_left, tile.pad_top))
+                crop.close()
+                transform = json.loads(tile.tile_to_mosaic_json)
+                mask_tile_to_roi(canvas, roi_geometry, transform["offset_x"], transform["offset_y"])
                 inputs.append(ImageInput(tile_id=tile.id, tile_code=tile.code, image=canvas))
         self._progress(job_id, worker_id, 40, "detect", "正在执行目标检测")
         try:
@@ -190,6 +208,8 @@ class InferenceJobExecutor:
             try:
                 mosaic_box = tile_box_to_mosaic(item.box, mosaic_width=mosaic_width, mosaic_height=mosaic_height, **transform)
             except ValueError:
+                continue
+            if not box_within_roi(mosaic_box, roi_geometry):
                 continue
             mapped.append(MappedPrediction(item.tile_id, item.tile_code, item.class_id, item.class_name, item.confidence, item.box, mosaic_box))
         self._progress(job_id, worker_id, 62, "nms", "正在执行跨网格类别感知去重")

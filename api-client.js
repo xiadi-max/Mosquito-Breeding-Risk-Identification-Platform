@@ -12,7 +12,10 @@ export class ApiProblem extends Error {
 export async function apiFetch(path, options = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), options.timeoutMs || 30000);
-  const requestId = crypto.randomUUID();
+  const requestId = typeof globalThis.crypto.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)),
+      byte => byte.toString(16).padStart(2, '0')).join('');
   const headers = new Headers(options.headers || {});
   headers.set('Accept', 'application/json');
   headers.set('X-Request-ID', requestId);

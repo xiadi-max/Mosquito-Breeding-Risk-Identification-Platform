@@ -7,7 +7,7 @@ from app.worker import run_worker
 from tests.integration.test_rois_grids import seed_task_and_mosaic
 
 
-def build_grid(client, settings):
+def build_grid(client, settings, roi_items=None):
     task_id, mosaic_id = seed_task_and_mosaic(settings, width=1000, height=900)
     mosaic_path = resolve_storage_path(
         settings.resolved_storage_root,
@@ -20,7 +20,7 @@ def build_grid(client, settings):
         json={
             "expected_version": 0,
             "source_artifact_id": mosaic_id,
-            "items": [
+            "items": roi_items if roi_items is not None else [
                 {
                     "code": "ROI-01",
                     "polygon": [[0, 0], [1000, 0], [1000, 900], [0, 900]],
@@ -41,6 +41,42 @@ def build_grid(client, settings):
     assert run_worker(once=True, settings=settings) == 0
     plan = client.get(f"/api/v1/tasks/{task_id}/grid-plan").json()
     return task_id, plan["id"]
+
+
+def test_inference_masks_roi_and_filters_outside_boxes(test_settings, migrated_client, monkeypatch):
+    from app.adapters.detection.fake import FakeDetector
+    from app.adapters.detection.base import RawPrediction
+
+    task_id, grid_id = build_grid(migrated_client, test_settings, roi_items=[
+        {"code": "ROI-01", "polygon": [[200, 200], [450, 200], [450, 320], [320, 320], [320, 450], [200, 450]]},
+        {"code": "hidden", "visible": False, "polygon": [[500, 500], [600, 500], [600, 600], [500, 600]]},
+    ])
+    observed = []
+
+    def predict(self, images, params):
+        assert len(images) == 1
+        tile = images[0]
+        assert tile.image.getpixel((230, 230)) == (120, 149, 111)
+        assert tile.image.getpixel((0, 0)) == (0, 0, 0)
+        assert tile.image.getpixel((350, 350)) == (0, 0, 0)
+        assert tile.image.getpixel((530, 530)) == (0, 0, 0)
+        observed.append(True)
+        return [RawPrediction(tile.tile_id, tile.tile_code,
+                              0, "container", .95, bounds) for bounds in [
+            (220., 220., 250., 250.), (10., 40., 50., 70.),
+            (310., 310., 340., 340.), (510., 510., 550., 550.)]]
+
+    monkeypatch.setattr(FakeDetector, "predict", predict)
+    queued = migrated_client.post(f"/api/v1/tasks/{task_id}/inference-jobs",
+                                  json={"grid_plan_id": grid_id, "provider": "fake"})
+    assert queued.status_code == 202, queued.text
+    assert run_worker(once=True, settings=test_settings) == 0
+    job = migrated_client.get(queued.json()["links"]["self"]).json()["job"]
+    assert job["status"] == "succeeded", job
+    assert observed == [True]
+    detections = migrated_client.get(f"/api/v1/tasks/{task_id}/detections").json()
+    assert len(detections["items"]) == 1
+    assert detections["items"][0]["mosaic_box"] == {"x1": 220., "y1": 220., "x2": 250., "y2": 250.}
 
 
 def test_fake_inference_idempotency_detection_query_and_review(test_settings, migrated_client):
