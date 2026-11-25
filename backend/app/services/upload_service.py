@@ -171,7 +171,7 @@ def inspect_image(path: Path, settings: Settings) -> ImageInspection:
                 if width <= 0 or height <= 0 or width * height > settings.max_image_pixels:
                     raise UploadRejected(
                         "IMAGE_DIMENSIONS_EXCEEDED",
-                        "影像像素尺寸无效或超过服务器限制。",
+                        f"影像尺寸 {width}×{height}（{width * height:,} 像素）无效或超过服务器上限 {settings.max_image_pixels:,} 像素。",
                     )
                 if image_format not in FORMAT_INFO:
                     raise UploadRejected(

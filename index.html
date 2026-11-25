@@ -221,7 +221,7 @@ button,input,textarea{font:inherit}.ambient{position:fixed;inset:0;overflow:hidd
         <div class="guide-page">
           <div class="card guide-hero"><div class="home-kicker">QUICK START GUIDE</div><h2>先看懂这条路径，再开始第一个任务。</h2><p>输入一批同区域航拍影像，系统依次完成整理、识别和风险分析，最终输出可以用于现场复查的热点与建议。</p><div class="guide-overview-flow"><div class="guide-overview-node"><b>INPUT · 输入</b><strong>连续航拍影像</strong><span>同一区域、同一日期、尽量保留 GPS</span></div><div class="guide-flow-arrow">→</div><div class="guide-overview-node"><b>PROCESS · 处理</b><strong>拼接、标注与识别</strong><span>按七个步骤逐项确认，结果自动保存</span></div><div class="guide-flow-arrow">→</div><div class="guide-overview-node"><b>OUTPUT · 输出</b><strong>风险热点与处置建议</strong><span>用于辅助现场核查和清理安排</span></div></div></div>
           <div class="guide-path">
-<div class="guide-chapter"><div class="chapter-marker">01</div><div class="card chapter-card"><div class="chapter-head"><div><h3>准备一批可用影像</h3><p>先确认数据条件，再创建任务。</p></div><span class="chapter-tag">准备数据</span></div><div class="prepare-grid"><div class="prepare-item"><b>影像范围</b><strong>同一连续航拍区域</strong><span>相邻照片需有充分重叠，不要混入其他地点。</span></div><div class="prepare-item"><b>文件格式</b><strong>JPG / JPEG / PNG</strong><span>至少 2 张；单次最多 50 张，单张不超过 50 MB。</span></div><div class="prepare-item"><b>原图处理</b><strong>保持原始清晰度</strong><span>默认不对单图强制去噪、增强或锐化。</span></div></div></div></div>
+<div class="guide-chapter"><div class="chapter-marker">01</div><div class="card chapter-card"><div class="chapter-head"><div><h3>准备一批可用影像</h3><p>先确认数据条件，再创建任务。</p></div><span class="chapter-tag">准备数据</span></div><div class="prepare-grid"><div class="prepare-item"><b>影像范围</b><strong>同一连续航拍区域</strong><span>相邻照片需有充分重叠，不要混入其他地点。</span></div><div class="prepare-item"><b>文件格式</b><strong>JPG / JPEG / PNG</strong><span>至少 2 张；单次最多 200 张，单张不超过 200 MB。</span></div><div class="prepare-item"><b>原图处理</b><strong>保持原始清晰度</strong><span>默认不对单图强制去噪、增强或锐化。</span></div></div></div></div>
             <div class="guide-chapter"><div class="chapter-marker">02</div><div class="card chapter-card"><div class="chapter-head"><div><h3>按区域和日期划分任务</h3><p>任务是所有影像、结果和报告的归属单位。</p></div><span class="chapter-tag">建立边界</span></div><div class="boundary-grid"><div class="boundary-panel good"><b>✓ 应该放在同一任务</b><strong>同一区域、同一次航拍、同一巡查目的</strong><span>例如：棠下村 7 月 16 日例行巡查。</span></div><div class="boundary-panel warn"><b>! 应该新建任务</b><strong>区域变化、日期变化或巡查目的变化</strong><span>不要把不同批次混在一起，否则结果无法准确追溯。</span></div></div></div></div>
             <div class="guide-chapter"><div class="chapter-marker">03</div><div class="card chapter-card"><div class="chapter-head"><div><h3>按四个阶段完成识别</h3><p>七个具体步骤组成连续流程，每一步都会自动保存。</p></div><span class="chapter-tag">执行流程</span></div><div class="phase-flow"><div class="phase-item"><b>步骤 01</b><strong>建立影像批次</strong><span>上传同一区域的整批照片。</span></div><div class="phase-item"><b>步骤 02–03</b><strong>形成检测区域</strong><span>拼接完整影像并圈定屋顶范围。</span></div><div class="phase-item"><b>步骤 04–05</b><strong>裁剪并识别</strong><span>生成网格、运行模型和人工复核。</span></div><div class="phase-item"><b>步骤 06–07</b><strong>形成行动依据</strong><span>查看热点并生成处置建议。</span></div></div></div></div>
             <div class="guide-chapter"><div class="chapter-marker">04</div><div class="card chapter-card"><div class="chapter-head"><div><h3>确认使用原则，然后开始</h3><p>下面三个问题贯穿整个流程。</p></div><span class="chapter-tag">开始任务</span></div><div class="faq-grid"><div class="faq-card"><strong>可以混合不同区域的照片吗？</strong><span>不可以。一个任务只对应一个连续航拍区域。</span></div><div class="faq-card"><strong>不懂参数怎么办？</strong><span>保留默认值即可，每个页面都会给出建议范围。</span></div><div class="faq-card"><strong>结果能直接作为结论吗？</strong><span>不能。模型与 AI 只提供辅助信息，最终由专业人员确认。</span></div></div><div class="guide-finish"><div><strong>准备好了？从任务或流程总览开始。</strong><span>已有任务可直接继续；新区域或新日期请创建新任务。</span></div><div class="page-actions"><button class="btn" onclick="goStep(9)">查看操作步骤</button><button class="btn primary" onclick="openTaskModal()">＋ 创建新任务</button><button class="btn" onclick="goStep(1)">继续当前任务 →</button></div></div></div></div>
@@ -239,7 +239,7 @@ button,input,textarea{font:inherit}.ambient{position:fixed;inset:0;overflow:hidd
         <div class="grid-2">
           <div class="card card-pad">
             <div class="card-title">区域影像</div><div class="card-note">本任务中的所有影像应来自同一连续航拍区域。</div>
-<div class="inline-actions" style="margin-bottom:12px"><label for="uploadMode">上传方式</label><select id="uploadMode" class="task-filter"><option value="raw">原始航拍影像（至少 2 张，需要拼接）</option><option value="imported">已拼接好的图像（1 张，跳过拼接）</option></select></div><div class="dropzone" id="dropzone"><input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple hidden><div><div class="drop-orbit"><div class="upload-arrow">↑</div></div><div class="drop-title">拖入整批影像，或 <span>选择文件</span></div><div class="drop-hint" id="uploadHint">JPG / JPEG / PNG · 至少 2 张 · 最多 50 张 · 单张不超过 50 MB</div><div class="inline-actions" style="justify-content:center;margin-top:18px"><button class="btn primary" id="chooseFiles" type="button">选择影像</button><button class="btn" id="demoFiles">载入演示影像</button></div></div></div>
+<div class="inline-actions" style="margin-bottom:12px"><label for="uploadMode">上传方式</label><select id="uploadMode" class="task-filter"><option value="raw">原始航拍影像（至少 2 张，需要拼接）</option><option value="imported">已拼接好的图像（1 张，跳过拼接）</option></select></div><div class="dropzone" id="dropzone"><input id="fileInput" type="file" accept=".jpg,.jpeg,.png,image/jpeg,image/png" multiple hidden><div><div class="drop-orbit"><div class="upload-arrow">↑</div></div><div class="drop-title">拖入整批影像，或 <span>选择文件</span></div><div class="drop-hint" id="uploadHint">JPG / JPEG / PNG · 至少 2 张 · 最多 200 张 · 单张不超过 200 MB</div><div class="inline-actions" style="justify-content:center;margin-top:18px"><button class="btn primary" id="chooseFiles" type="button">选择影像</button><button class="btn" id="demoFiles">载入演示影像</button></div></div></div>
           </div>
           <div class="stack">
             <div class="card card-pad"><div class="card-title">任务概览</div><div class="stats"><div class="stat"><b id="uploadCount">0</b><span>已导入影像</span></div><div class="stat"><b id="uploadSize">0 MB</b><span>文件总大小</span></div><div class="stat"><b id="gpsCount">0</b><span>含定位信息</span></div><div class="stat"><b id="captureSpan">--</b><span>拍摄时间跨度</span></div></div></div>
@@ -324,6 +324,27 @@ button,input,textarea{font:inherit}.ambient{position:fixed;inset:0;overflow:hidd
 <script src="./frontend-config.js"></script>
 <script src="./data.js"></script>
 <script>
+if (window.APP_CONFIG.dataMode === 'api') {
+  window.MOSQUITO_API_READY = false;
+  window.failApiStartup = error => {
+    let notice = document.getElementById('apiStartupError');
+    if (!notice) {
+      notice = document.createElement('div'); notice.id = 'apiStartupError';
+      notice.setAttribute('role', 'alert');
+      notice.style.cssText = 'position:fixed;top:75px;left:20px;right:20px;z-index:10000;padding:16px;background:#44252b;color:#fff;border:1px solid #ff8494;border-radius:12px';
+      document.body.appendChild(notice);
+    }
+    notice.textContent = '服务连接未完成，请刷新重试。文件尚未上传，请勿继续操作。详情：' + (error?.message || '页面加载失败');
+  };
+  for (const type of ['click', 'change', 'drop']) document.addEventListener(type, event => {
+    if (window.MOSQUITO_API_READY || !event.target.closest?.('#dropzone, #toStitch, #startStitch, #taskModal .primary')) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    document.getElementById('uploadStatus').textContent = '正在连接服务，请稍候；若一直未就绪，请刷新页面';
+  }, true);
+  window.addEventListener('unhandledrejection', event => {
+    if (!window.MOSQUITO_API_READY) window.failApiStartup(event.reason);
+  });
+}
 if (window.APP_CONFIG.dataMode === 'test') {
   document.write('<script src="./test_data.js"><\\/script>');
 }
@@ -338,9 +359,24 @@ async function loadDynamicData(){
     if (!window.TEST_DATA) throw new Error('未找到测试数据 test_data.js');
     return structuredClone(window.TEST_DATA);
   }
-  const response = await fetch(appConfig.api.dynamicDataUrl, { headers: { Accept: 'application/json' } });
-  if (!response.ok) throw new Error(`动态数据请求失败：${response.status}`);
-  return response.json();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(appConfig.api.dynamicDataUrl, { cache:'no-store', signal:controller.signal, headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error(`任务列表加载失败：${response.status}`);
+      const data = await response.json();
+      if (!Array.isArray(data.tasks)) throw new Error('任务列表响应不完整');
+      return data;
+    } catch (error) {
+      if (attempt === 2) {
+        window.MOSQUITO_TASKS_ERROR = true;
+        window.dispatchEvent(new Event('mosquito-tasks-state'));
+        throw error;
+      }
+    } finally { clearTimeout(timer); }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+  }
 }
 const appData = await loadDynamicData();
 stageMeta = appConfig.stageMeta;
@@ -368,13 +404,15 @@ function renderSeedData(){
   const risk=appData.risk;document.getElementById('highRange').value=risk.highThreshold;document.getElementById('medRange').value=risk.mediumThreshold;document.getElementById('highVal').textContent=risk.highThreshold;document.getElementById('medVal').textContent=risk.mediumThreshold;document.getElementById('heatLayer').innerHTML=risk.hotspots.map(hotspot=>`<ellipse class="heat-blob" cx="${hotspot.blob.cx}" cy="${hotspot.blob.cy}" rx="${hotspot.blob.rx}" ry="${hotspot.blob.ry}" fill="${hotspot.blob.fill}"/>`).join('');document.getElementById('contourLayer').innerHTML=risk.hotspots.map(hotspot=>`<path id="contour-${hotspot.id}" class="hotspot-contour" d="${hotspot.contour}"/><text class="hotspot-label" x="${hotspot.label[0]}" y="${hotspot.label[1]}">${hotspot.id} · ${hotspot.clusteringIndex}</text>`).join('');const heatSide=document.querySelector('.heat-side');heatSide.querySelectorAll('.hotspot').forEach(item=>item.remove());risk.hotspots.forEach((hotspot,index)=>{const riskClass=hotspot.clusteringIndex>=risk.highThreshold?'high':hotspot.clusteringIndex>=risk.mediumThreshold?'med':'low',riskText=riskClass==='high'?'高聚集':riskClass==='med'?'中聚集':'低聚集',item=document.createElement('div');item.className='hotspot'+(index===0?' active':'');item.dataset.hot=hotspot.id;item.dataset.score=hotspot.clusteringIndex;item.innerHTML=`<div class="hotspot-head"><span>${hotspot.id} · ${hotspot.area}</span><span class="risk ${riskClass}">${riskText}</span></div><div class="hotspot-data"><span>目标聚集指数 <b>${hotspot.clusteringIndex}/100</b></span><span>复核保留 <b>${hotspot.targets} 个</b></span><span>识别类别 <b>${hotspot.category}</b></span></div>`;heatSide.appendChild(item)});
 }
 renderSeedData();
+window.MOSQUITO_TASKS_LOADED = true;
+window.dispatchEvent(new Event('mosquito-tasks-state'));
 function createTask(){const name=document.getElementById('taskNameInput').value.trim(),area=document.getElementById('taskAreaInput').value.trim(),date=document.getElementById('taskDateInput').value||'2026-08-07',type=document.getElementById('taskTypeInput').value;if(!name||!area){toast('请先填写任务名称和巡查区域');return}const id='T-'+date.slice(5).replace('-','');const card=document.createElement('div');card.className='task-card selected';card.dataset.task=name+' · '+id.slice(-4);card.onclick=()=>selectTask(card);card.innerHTML=`<div class="task-card-head"><h4>${name}</h4><span class="task-id">${id}</span></div><div class="task-meta"><span class="task-tag">${type}</span><span class="task-status running">待开始 · 0%</span></div><div class="task-card-foot"><span>${date}</span><span>${area}</span></div>`;document.querySelectorAll('.task-card').forEach(x=>x.classList.remove('selected'));document.getElementById('taskGrid').prepend(card);document.getElementById('currentTaskName').textContent=card.dataset.task;document.getElementById('homeCurrentTask').textContent=card.dataset.task;closeTaskModal();document.getElementById('taskNameInput').value='';document.getElementById('taskAreaInput').value='';goStep(1);toast('任务已创建，开始上传影像')}
 document.getElementById('taskModal').addEventListener('click',e=>{if(e.target.id==='taskModal')closeTaskModal()});
 function toast(msg){const wrap=document.getElementById('toastWrap'),t=document.createElement('div');t.className='toast';t.textContent='✓  '+msg;wrap.appendChild(t);setTimeout(()=>{t.style.opacity=0;t.style.transform='translateY(10px)';setTimeout(()=>t.remove(),300)},2600)}
 
 const dz=document.getElementById('dropzone'),input=document.getElementById('fileInput');document.getElementById('chooseFiles').onclick=e=>{e.stopPropagation();input.value='';input.click()};dz.onclick=e=>{if(!e.target.closest('button,label,input'))input.click()};dz.ondragover=e=>{e.preventDefault();dz.classList.add('drag')};dz.ondragleave=()=>dz.classList.remove('drag');dz.ondrop=e=>{e.preventDefault();dz.classList.remove('drag');loadFiles([...e.dataTransfer.files])};input.onchange=()=>loadFiles([...input.files]);document.getElementById('demoFiles').onclick=e=>{e.stopPropagation();loadDemo()};
 function loadDemo(){loadFiles(appData.demoImages,true)}
-function loadFiles(files,demo=false){if(!files.length)return;const list=document.getElementById('fileList');list.innerHTML='';files.slice(0,50).forEach((f,i)=>{const row=document.createElement('div');row.className='file';row.style.animationDelay=i*35+'ms';row.innerHTML=`<div class="thumb"></div><div><div class="file-name">${f.name}</div><div class="file-meta">${(f.size/1048576).toFixed(1)} MB · GPS READY</div></div><span class="check">✓</span>`;list.appendChild(row)});const total=files.reduce((s,f)=>s+(f.size||6e6),0);document.getElementById('uploadCount').textContent=files.length;document.getElementById('uploadSize').textContent=(total/1048576).toFixed(1)+' MB';document.getElementById('gpsCount').textContent=files.length;document.getElementById('captureSpan').textContent=demo?'11 min':'已读取';document.getElementById('uploadStatus').textContent=`${files.length} 张影像已通过完整性检查`;document.getElementById('toStitch').disabled=false;toast('影像批次已建立')}
+function loadFiles(files,demo=false){if(!files.length)return;const list=document.getElementById('fileList');list.innerHTML='';files.slice(0,200).forEach((f,i)=>{const row=document.createElement('div');row.className='file';row.style.animationDelay=i*35+'ms';row.innerHTML=`<div class="thumb"></div><div><div class="file-name">${f.name}</div><div class="file-meta">${(f.size/1048576).toFixed(1)} MB · GPS READY</div></div><span class="check">✓</span>`;list.appendChild(row)});const total=files.reduce((s,f)=>s+(f.size||6e6),0);document.getElementById('uploadCount').textContent=files.length;document.getElementById('uploadSize').textContent=(total/1048576).toFixed(1)+' MB';document.getElementById('gpsCount').textContent=files.length;document.getElementById('captureSpan').textContent=demo?'11 min':'已读取';document.getElementById('uploadStatus').textContent=`${files.length} 张影像已通过完整性检查`;document.getElementById('toStitch').disabled=false;toast('影像批次已建立')}
 function resetUpload(){input.value='';document.getElementById('fileList').innerHTML='<div class="footnote" style="padding:30px 5px;text-align:center">上传后将在这里检查文件完整性</div>';['uploadCount','gpsCount'].forEach(id=>document.getElementById(id).textContent='0');document.getElementById('uploadSize').textContent='0 MB';document.getElementById('captureSpan').textContent='--';document.getElementById('toStitch').disabled=true;document.getElementById('uploadStatus').textContent='等待导入影像'}
 
 document.getElementById('startStitch').onclick=function(){this.disabled=true;let p=0;document.getElementById('stitchCanvasStatus').textContent='正在匹配影像特征…';const timer=setInterval(()=>{p=Math.min(100,p+4);document.getElementById('stitchPct').textContent=p+'%';document.getElementById('stitchOrb').style.setProperty('--progress',p+'%');if(p===48)document.getElementById('stitchCanvasStatus').textContent='正在执行仿射配准与接缝融合…';if(p>=100){clearInterval(timer);document.getElementById('stitchPieces').classList.remove('unstitched');document.getElementById('stitchCanvasStatus').textContent='拼接图已生成';document.getElementById('qCoverage').textContent='SCANS 仿射';document.getElementById('qOverlap').textContent='0.6';document.getElementById('qGps').textContent='12 / 12';document.getElementById('qError').textContent='0 张';document.getElementById('toAnnot').disabled=false;this.textContent='重新生成拼接图';this.disabled=false;toast('拼接处理完成，请确认预览')}} ,45)};
@@ -409,8 +447,13 @@ Object.assign(window,{goStep,openTaskModal,closeTaskModal,selectTask,createTask,
 window.getEditorRois=()=>structuredClone(rois);
 window.setEditorRois=items=>{rois=structuredClone(items);draft=[];selectedRoi=0;renderDraft();renderRois()};
 if (appConfig.dataMode === 'api') {
-  const { startApiIntegration } = await import('./api-integration.js?v=20260824.3');
-  await startApiIntegration({ initialDashboard: appData, toast, goStep });
+  try {
+    const { startApiIntegration } = await import('./api-integration.js?v=20261105.2');
+    await startApiIntegration({ initialDashboard: appData, toast, goStep });
+  } catch (error) {
+    window.MOSQUITO_API_READY = false;
+    window.failApiStartup(error);
+  }
 }
 </script>
 <script>
@@ -435,10 +478,13 @@ if (appConfig.dataMode === 'api') {
       if (!card.hidden) visible++;
     });
     let empty = taskGrid.querySelector('.task-empty');
-    if (!visible) { if (!empty) { empty = document.createElement('div'); empty.className = 'task-empty'; empty.textContent = '没有找到符合条件的任务'; taskGrid.appendChild(empty); } }
+    const loaded = window.MOSQUITO_TASKS_LOADED === true;
+    const message = loaded ? '没有找到符合条件的任务' : (window.MOSQUITO_TASKS_ERROR ? '任务列表加载失败，请刷新重试；尚未确认任务是否存在' : '正在加载服务器任务，请稍候…');
+    if (!visible) { if (!empty) { empty = document.createElement('div'); empty.className = 'task-empty'; taskGrid.appendChild(empty); } if(empty.textContent !== message) empty.textContent = message; }
     else empty?.remove();
-    count.textContent = query || state !== 'all' ? `显示 ${visible} / ${getCards().length} 个任务` : `共 ${getCards().length} 个任务`;
+    count.textContent = !loaded ? '尚未加载' : (query || state !== 'all' ? `显示 ${visible} / ${getCards().length} 个任务` : `共 ${getCards().length} 个任务`);
   };
+  window.addEventListener('mosquito-tasks-state', refreshTasks);
   const attachDelete = card => {
     if (card.querySelector('.task-delete')) return;
     const button = document.createElement('button');

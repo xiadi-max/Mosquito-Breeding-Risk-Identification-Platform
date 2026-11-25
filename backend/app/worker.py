@@ -15,7 +15,7 @@ from uuid import uuid4
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, configure_image_limits, get_settings
 from app.core.db import create_db_engine, create_session_factory, get_schema_revision
 from app.core.logging import configure_logging
 from app.domain.enums import WorkerStatus
@@ -157,6 +157,7 @@ def _execute_job(factory, settings: Settings, job, worker_id: str) -> None:
 
 def run_worker(*, once: bool = False, settings: Settings | None = None) -> int:
     active_settings = settings or get_settings()
+    configure_image_limits(active_settings)
     configure_logging(active_settings.log_level)
     engine = create_db_engine(active_settings)
     revision = get_schema_revision(engine)

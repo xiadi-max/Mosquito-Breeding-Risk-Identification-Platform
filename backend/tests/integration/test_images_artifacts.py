@@ -26,6 +26,20 @@ def image_bytes(image_format: str = "JPEG", color=(25, 80, 120)) -> bytes:
     return buffer.getvalue()
 
 
+def test_upload_accepts_200_images_without_truncation(migrated_client, test_settings):
+    assert test_settings.max_upload_files == 200
+    assert test_settings.max_upload_file_bytes == 200 * 1024 * 1024
+    task_id = create_task(migrated_client)
+    files = [("files", (f"image-{index}.png", image_bytes("PNG", (index, 80, 120)), "image/png"))
+             for index in range(200)]
+    response = migrated_client.post(f"/api/v1/tasks/{task_id}/images", files=files)
+    assert response.status_code == 201, response.text
+    assert len(response.json()["accepted"]) == 200
+    assert response.json()["rejected"] == []
+    excessive = migrated_client.post(f"/api/v1/tasks/{task_id}/images", files=files + [files[0]])
+    assert excessive.status_code == 413, excessive.text
+
+
 def mpo_bytes() -> bytes:
     buffer = BytesIO()
     primary = PILImage.new("RGB", (32, 24), (25, 80, 120))
@@ -37,6 +51,24 @@ def mpo_bytes() -> bytes:
         append_images=[auxiliary],
     )
     return buffer.getvalue()
+
+
+def test_upload_reports_dimensions_and_configured_pixel_limit(migrated_client, test_settings):
+    task_id = create_task(migrated_client)
+    previous = test_settings.max_image_pixels
+    test_settings.max_image_pixels = 500
+    try:
+        response = migrated_client.post(
+            f"/api/v1/tasks/{task_id}/images",
+            files={"files": ("large.jpg", image_bytes(), "image/jpeg")},
+        )
+    finally:
+        test_settings.max_image_pixels = previous
+    assert response.status_code == 201
+    rejected = response.json()["rejected"][0]
+    assert rejected["code"] == "IMAGE_DIMENSIONS_EXCEEDED"
+    assert "32×24" in rejected["detail"]
+    assert "500" in rejected["detail"]
 
 
 @pytest.mark.integration

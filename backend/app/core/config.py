@@ -31,10 +31,10 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: str = "http://127.0.0.1:8000,http://localhost:8000"
 
-    max_upload_files: int = Field(default=50, ge=1, le=1000)
-    max_upload_file_bytes: int = Field(default=50 * 1024 * 1024, ge=1)
+    max_upload_files: int = Field(default=200, ge=1, le=1000)
+    max_upload_file_bytes: int = Field(default=200 * 1024 * 1024, ge=1)
     max_task_bytes: int = Field(default=10 * 1024 * 1024 * 1024, ge=1)
-    max_image_pixels: int = Field(default=100_000_000, ge=1)
+    max_image_pixels: int = Field(default=600_000_000, ge=1)
 
     job_poll_interval: float = Field(default=1.0, gt=0, le=60)
     job_lease_seconds: int = Field(default=60, ge=15, le=3600)
@@ -134,3 +134,10 @@ class Settings(BaseSettings):
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings()
+
+
+def configure_image_limits(settings: Settings) -> None:
+    """Set Pillow's process-wide guard at startup for API and worker alike."""
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = settings.max_image_pixels

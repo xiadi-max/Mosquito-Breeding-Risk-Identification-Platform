@@ -5,11 +5,34 @@ const qsa = selector => [...document.querySelectorAll(selector)];
 const text = (id, value) => { const node = document.getElementById(id); if (node) node.textContent = value; };
 const escapeText = value => String(value ?? '');
 
-export function resumeStep(task) {
+export function resumeStep(task, uploadMode = 'raw') {
   const stages = {task_created:1, image_ingest:2, mosaic:3, roi:4, grid:5, inference:6, risk:7, completed:7};
-  if (task?.current_stage === 'image_ingest' && task.image_count < 2) return 1;
+  if (task?.current_stage === 'image_ingest' && (task.image_count < 2 || uploadMode === 'imported')) return 1;
   if (task?.current_stage === 'inference' && task.blocked_by?.code === 'PENDING_REVIEWS') return 5;
   return stages[task?.current_stage] || 1;
+}
+
+export async function advanceUpload({mode, images, existingMosaic, createImported, displayMosaic, navigate}) {
+  if (mode !== 'imported') {
+    if (images.length < 2) throw new Error('原始航拍影像至少需要 2 张；完整区域图请选择已拼接图像模式');
+    navigate(2);
+    return;
+  }
+  if (images.length !== 1) throw new Error('请选择 1 张已拼接好的完整区域图像');
+  const mosaic = existingMosaic?.mosaic_artifact_id ? existingMosaic : await createImported();
+  await displayMosaic(mosaic);
+  navigate(3);
+  return mosaic;
+}
+
+export function validateUploadFiles(files, mode) {
+  const supported = files.filter(file => /\.(jpe?g|png)$/i.test(file.name));
+  if (!supported.length) throw new Error('请选择 JPG、JPEG 或 PNG 影像');
+  if (mode === 'imported' && supported.length !== 1) throw new Error('请选择 1 张已拼接好的完整区域图像');
+  if (supported.length > 200) throw new Error('单次最多上传 200 张影像，请分批上传');
+  if (supported.some(file => file.size > 200 * 1024 * 1024)) throw new Error('单张图片不能超过 200 MB，请压缩超限图片后上传');
+  if (supported.reduce((total, file) => total + file.size, 0) > 10 * 1024 ** 3) throw new Error('单个任务总容量不能超过 10 GB');
+  return supported;
 }
 
 export async function applyPendingReviews(api, taskId, action, onProgress = () => {}) {
@@ -317,6 +340,7 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
   async function hydrateTask() {
     if (!state.taskId) return;
     const taskId = state.taskId;
+    try { qs('#uploadMode').value = sessionStorage.getItem(`mosquito-upload-mode:${taskId}`) || 'raw'; } catch (_) { /* Storage can be disabled. */ }
     if (state.mosaicObjectUrl) URL.revokeObjectURL(state.mosaicObjectUrl);
     Object.assign(state, {
       task:null, images:[], mosaic:null, roi:null, gridPreview:null, gridPlan:null,
@@ -366,14 +390,15 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
 
   async function uploadFiles(files) {
     if (!files.length) return;
-    const supported = files.filter(file => /\.(jpe?g|png)$/i.test(file.name));
+    const supported = validateUploadFiles(files, qs('#uploadMode')?.value);
     const skipped = files.length - supported.length;
     if (qs('#uploadMode')?.value === 'imported' && supported.length !== 1) throw new Error('请选择 1 张已拼接好的完整区域图像');
     if (!supported.length) throw new Error('请选择 JPG、JPEG 或 PNG 影像');
-    const form = new FormData(); supported.slice(0, 50).forEach(file => form.append('files', file, file.name));
+    const form = new FormData(); supported.forEach(file => form.append('files', file, file.name));
     await run(qs('#chooseFiles'), '正在上传…', async () => {
       const result = await api.upload(`/tasks/${requireTask()}/images`, form);
       const listing = await api.get(`/tasks/${requireTask()}/images`);
+      if (result.accepted.length) invalidateDerivedClientState();
       state.images = listing.items; renderImages(listing);
       const rejected = result.rejected.length, duplicates = result.duplicates.length;
       const rejectionDetails = result.rejected
@@ -412,6 +437,8 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
     text('mosaicSourceCount', items.length);
     text('uploadStatus', items.length >= 2 ? `${items.length} 张影像已由服务端校验` : (items.length ? '已校验 1 张；至少还需 1 张才能拼接' : '等待导入影像'));
     const imported = qs('#uploadMode')?.value === 'imported';
+    text('uploadHint', imported ? 'JPG / JPEG / PNG · 1 张完整区域图 · 单张不超过 200 MB · 跳过拼接' : 'JPG / JPEG / PNG · 至少 2 张 · 最多 200 张 · 单张不超过 200 MB');
+    qs('#fileInput').multiple = !imported;
     qs('#toStitch').textContent = imported ? '使用已拼接图像，进入检测范围 →' : '进入拼接预处理 →';
     qs('#toStitch').disabled = imported ? items.length !== 1 : items.length < 2;
     if (imported) text('uploadStatus', items.length === 1 ? '已校验 1 张已拼接图像，可直接进入检测范围' : (items.length ? '此模式需要一张完整区域图，请移除多余影像或新建任务' : '请上传 1 张已拼接图像'));
@@ -967,29 +994,36 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
       requireTask();
       await hydrateTask();
       if (!state.task) throw new Error('任务读取失败，请稍后重试');
-      goStep(resumeStep(state.task));
+      goStep(resumeStep(state.task, qs('#uploadMode').value));
     }).catch(() => {});
   });
   window.createTask=createTask; window.resetUpload=()=>resetUpload().catch(notifyError); window.resolveReview=()=>toast('请使用当前复核项按钮');
   qs('#taskModal .modal-actions .primary').onclick=event=>{event.preventDefault();createTask().catch(()=>{})};
   const mode = qs('#uploadMode');
   mode.onchange = () => {
-    text('uploadHint', mode.value === 'imported' ? 'JPG / JPEG / PNG · 1 张完整区域图 · 单张不超过 50 MB · 跳过拼接' : 'JPG / JPEG / PNG · 至少 2 张 · 最多 50 张 · 单张不超过 50 MB');
+    try { if(state.taskId) sessionStorage.setItem(`mosquito-upload-mode:${state.taskId}`, mode.value); } catch (_) { /* Storage can be disabled. */ }
+    text('uploadHint', mode.value === 'imported' ? 'JPG / JPEG / PNG · 1 张完整区域图 · 单张不超过 200 MB · 跳过拼接' : 'JPG / JPEG / PNG · 至少 2 张 · 最多 200 张 · 单张不超过 200 MB');
     qs('#fileInput').multiple = mode.value !== 'imported';
     renderImages({items: state.images});
   };
-  qs('#toStitch').onclick = () => {
-    if (mode.value !== 'imported') { goStep(2); return; }
-    run(qs('#toStitch'), '正在导入已拼接图像…', async () => {
+  const continueUpload = () => run(qs('#toStitch'), mode.value === 'imported' ? '正在准备区域图…' : '正在进入拼接…', () => advanceUpload({
+    mode: mode.value, images: state.images, existingMosaic: state.mosaic,
+    createImported: async () => {
       const resource = await api.post(`/tasks/${requireTask()}/mosaic-jobs`, {provider:'imported'}, {'Idempotency-Key':idempotency('imported')});
-      const job = await waitForJob(api, resource, () => {});
-      state.mosaic = job.result;
-      await renderMosaicArtifact(job.result);
-      qs('#toAnnot').disabled = false;
-      goStep(3);
-      toast('已拼接图像已导入，请设置检测范围');
-    }).catch(() => {});
-  };
+      const job = await waitForJob(api, resource);
+      return job.result;
+    },
+    displayMosaic: async mosaic => { state.mosaic = mosaic; await renderMosaicArtifact(mosaic); qs('#toAnnot').disabled = false; },
+    navigate: goStep,
+  })).catch(() => {});
+  qs('#toStitch').removeAttribute('onclick');
+  qs('#toStitch').onclick = continueUpload;
+  document.addEventListener('click', event => {
+    if (mode.value !== 'imported' || !event.target.closest('.flow-btn[data-step="2"]')) return;
+    event.preventDefault(); event.stopImmediatePropagation();
+    continueUpload();
+  }, true);
+  mode.onchange();
   const fileInput=qs('#fileInput');
   qs('#chooseFiles').onclick=event=>{event.preventDefault();event.stopPropagation();fileInput.value='';fileInput.click()};
   fileInput.onchange=()=>{const files=[...fileInput.files];fileInput.value='';uploadFiles(files).catch(()=>{})};
@@ -1001,6 +1035,7 @@ export async function startApiIntegration({initialDashboard, toast, goStep}) {
   const exportButtons=qsa('[data-stage="6"] .grid-3 .btn');[['csv',exportButtons[0]],['xlsx',exportButtons[1]],['pdf',exportButtons[2]]].forEach(([format,button])=>button.onclick=()=>exportReport(format,button).catch(()=>{}));
   const decisionButtons=qsa('[data-stage="7"] .stage-actions .right .btn');decisionButtons[0].onclick=()=>saveDecision().catch(notifyError);decisionButtons[1].onclick=()=>exportReport('pdf',decisionButtons[1]).catch(()=>{});
   document.addEventListener('click',event=>{const button=event.target.closest('.task-delete');if(!button)return;event.preventDefault();event.stopImmediatePropagation();const card=button.closest('.task-card'),taskId=card?.dataset.taskId;if(!taskId||!confirm('确定删除此任务及其影像和结果吗？'))return;api.delete(`/tasks/${taskId}`).then(()=>location.reload()).catch(notifyError)},true);
+  window.MOSQUITO_API_READY = true;
   await hydrateRuntime();
   if(state.taskId) {
     try { await hydrateTask(); }

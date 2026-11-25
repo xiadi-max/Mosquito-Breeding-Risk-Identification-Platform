@@ -53,7 +53,7 @@ export function createApiClient(baseUrl = '/api/v1') {
     put: (path, body, headers) => call(path, {method: 'PUT', body, headers}),
     patch: (path, body, headers) => call(path, {method: 'PATCH', body, headers}),
     delete: path => call(path, {method: 'DELETE'}),
-    upload: (path, form) => call(path, {method: 'POST', body: form, timeoutMs: 120000}),
+    upload: (path, form) => call(path, {method: 'POST', body: form, timeoutMs: 7200000}),
   };
 }
 

@@ -12,7 +12,7 @@ from app.api.middleware import RequestContextMiddleware
 from app.api.router import api_router
 from app.api.routes.dashboard import router as dashboard_router
 from app.api.routes.frontend import router as frontend_router
-from app.core.config import Settings, get_settings
+from app.core.config import Settings, configure_image_limits, get_settings
 from app.core.db import create_db_engine, create_session_factory
 from app.core.errors import install_exception_handlers
 from app.core.logging import configure_logging
@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     active_settings = settings or get_settings()
+    configure_image_limits(active_settings)
     configure_logging(active_settings.log_level)
     engine = create_db_engine(active_settings)
 
